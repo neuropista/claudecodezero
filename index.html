@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>La Senda del Director — Claude Code desde cero</title>
+  <meta name="description" content="RPG 2D estilo 90's para aprender Claude Code sin ser programador. Basado en el guion docente de Neuropista.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎮</text></svg>">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="wrap">
+    <canvas id="game" width="640" height="392"></canvas>
+    <div id="touch">
+      <div id="dpad">
+        <button data-k="ArrowUp" aria-label="Arriba">▲</button>
+        <button data-k="ArrowLeft" aria-label="Izquierda">◀</button>
+        <button data-k="ArrowDown" aria-label="Abajo">▼</button>
+        <button data-k="ArrowRight" aria-label="Derecha">▶</button>
+      </div>
+      <button id="btnA" data-k=" " aria-label="Acción">A</button>
+    </div>
+  </div>
+  <script src="js/data/questions.js"></script>
+  <script src="js/data/story.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
