@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>La Senda del Director 3D — Claude Code desde cero</title>
+  <meta name="description" content="RPG 3D en primera persona estilo 90's para aprender Claude Code sin ser programador, con niveles de dificultad. Basado en el guion docente de Neuropista.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗿</text></svg>">
+  <link rel="stylesheet" href="css/style3d.css">
+</head>
+<body>
+  <div id="wrap">
+    <div id="stage">
+      <canvas id="scene" width="400" height="250"></canvas>
+      <canvas id="hud" width="800" height="500"></canvas>
+    </div>
+    <p id="nowebgl">
+      Tu navegador no pudo iniciar el 3D (WebGL).<br>
+      Prueba con Chrome, Edge o Firefox actualizados, o juega la
+      <a href="index.html">versión 2D</a>, que funciona en cualquier equipo.
+    </p>
+    <p class="crosslink">¿Prefieres la vista clásica cenital? Juega <a href="index.html">la edición 2D</a>.</p>
+    <div id="touch">
+      <div id="dpad">
+        <button data-k="ArrowUp" aria-label="Avanzar">▲</button>
+        <button data-k="ArrowLeft" aria-label="Girar a la izquierda">◀</button>
+        <button data-k="ArrowDown" aria-label="Retroceder">▼</button>
+        <button data-k="ArrowRight" aria-label="Girar a la derecha">▶</button>
+      </div>
+      <button id="btnA" data-k=" " aria-label="Acción">A</button>
+    </div>
+  </div>
+
+  <script>
+    // Si no hay WebGL, mostramos el aviso y no cargamos el motor 3D
+    (function () {
+      var c = document.getElementById('scene');
+      var ok = false;
+      try { ok = !!(c.getContext('webgl') || c.getContext('experimental-webgl')); } catch (e) { ok = false; }
+      if (!ok) {
+        document.getElementById('stage').style.display = 'none';
+        document.getElementById('nowebgl').style.display = 'block';
+        window.__NO_WEBGL__ = true;
+      }
+    })();
+  </script>
+  <script src="js/data/questions.js"></script>
+  <script src="js/data/questions_hard.js"></script>
+  <script src="js/data/story.js"></script>
+  <script src="js/audio.js"></script>
+  <script>
+    if (!window.__NO_WEBGL__) {
+      document.write('<script src="js/engine3d.js"><\/script>');
+      document.write('<script src="js/game3d.js"><\/script>');
+    }
+  </script>
+</body>
+</html>

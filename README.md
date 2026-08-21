@@ -1,24 +1,30 @@
 # La Senda del Director 🎮
 
-**Un RPG 2D estilo años 90 para aprender Claude Code desde cero, sin ser programador.**
+**Un RPG para aprender Claude Code desde cero, sin ser programador — en dos ediciones: 2D cenital y 3D en primera persona.**
 
 Basado en el guion docente *"Claude Code sin ser programador"* (Neuropista · Andy García Peña).
 
-![Género](https://img.shields.io/badge/g%C3%A9nero-RPG%20educativo-purple) ![Tecnología](https://img.shields.io/badge/tecnolog%C3%ADa-HTML5%20%2B%20Canvas-blue) ![Idioma](https://img.shields.io/badge/idioma-espa%C3%B1ol-green)
+![Género](https://img.shields.io/badge/g%C3%A9nero-RPG%20educativo-purple) ![Tecnología](https://img.shields.io/badge/tecnolog%C3%ADa-HTML5%20%2B%20Canvas%20%2B%20WebGL-blue) ![Idioma](https://img.shields.io/badge/idioma-espa%C3%B1ol-green) ![Dependencias](https://img.shields.io/badge/dependencias-ninguna-brightgreen)
 
 ## 🕹️ Cómo jugar
 
-**No necesitas instalar nada**: descarga o clona este repositorio y abre `index.html` en tu navegador (Chrome, Edge, Firefox o Safari).
+**No necesitas instalar nada.** Descarga o clona el repositorio y abre en tu navegador:
+
+| Archivo | Edición |
+|---------|---------|
+| `index.html` | **2D cenital** — estilo RPG clásico de los 90, funciona en cualquier equipo |
+| `index3d.html` | **3D en primera persona** — dungeon crawler con **niveles de dificultad** (requiere WebGL) |
 
 ```
 git clone https://github.com/neuropista/claudecodezero.git
 ```
 
-O si prefieres servirlo localmente:
+O sírvelo localmente:
 
 ```
 python3 -m http.server 8000
-# luego abre http://localhost:8000
+# 2D: http://localhost:8000/index.html
+# 3D: http://localhost:8000/index3d.html
 ```
 
 ## 📖 La historia
@@ -46,6 +52,26 @@ python3 -m http.server 8000
 - **Jefe final**: clasifica las afirmaciones de El Humo como **VERDAD** o **HUMO** para disiparlo.
 - **Logros** 🏆: basados en la rúbrica del proyecto integrador (Regla de Oro, Semáforo Interior, Detector de Humo…).
 
+## 🧊 Edición 3D: dungeon crawler con dificultad
+
+La edición 3D recorre **las mismas 6 zonas y las mismas preguntas**, pero en primera persona y con movimiento paso a paso por rejilla, como los *dungeon crawlers* de los 90 (Eye of the Beholder, Ultima Underworld). Incluye minimapa que se revela al explorar, niebla por distancia, texturas y sprites generados por código, y a **BIT** flotando siempre a tu lado.
+
+### Elige tu nivel de dificultad
+
+| Nivel | Corazones | Opciones | Tiempo | Guardianes | Extra | XP |
+|-------|-----------|----------|--------|-----------|-------|-----|
+| 🟢 **APRENDIZ** | 5 | 3 | sin límite | 3 por zona | para empezar sin miedo | ×1 |
+| 🟡 **PROFESIONAL** | 3 | 4 | 30 s | 4 por zona | el reto equilibrado | ×2 |
+| 🔴 **DIRECTOR** | 2 | 4 | 15 s | 5 por zona | **+18 preguntas EXPERTAS** de detalle fino del guion | ×3 |
+
+Se elige al empezar una aventura, al entrar a un nivel de repaso, o cuando quieras desde el menú. Agotar el tiempo cuenta como error, responder con más de la mitad del tiempo restante da bonus ⚡, y las preguntas expertas valen el doble ★.
+
+### Efectos 3D al fallar
+
+- **El Humo**: la niebla se cierra sobre ti y no ves más allá de tu nariz.
+- **La carpeta caótica**: archivos sin nombre te persiguen por los pasillos; si te alcanzan, vuelves al inicio.
+- **Glitch**: te teletransporta a otro punto del mapa y te desorienta.
+
 ## ⌨️ Controles
 
 | Tecla | Acción |
@@ -57,18 +83,36 @@ python3 -m http.server 8000
 | ESC | Volver al menú (guarda tu avance) |
 | Ratón / táctil | Todo se puede jugar con clics; en móvil aparece una cruceta |
 
+**Solo en 3D** (movimiento por rejilla, paso a paso):
+
+| Tecla | Acción |
+|-------|--------|
+| ↑ / ↓ | Avanzar / retroceder una casilla |
+| ← / → (o Q/E) | Girar 90 grados |
+| A / D | Desplazamiento lateral |
+| ESPACIO | Interactuar con lo que tengas enfrente |
+
 ## 🛠️ Tecnología
 
 HTML5 + Canvas + JavaScript puro. Sin dependencias, sin build, sin frameworks. Pixel art dibujado por código y sonido chiptune generado con WebAudio — coherente con el espíritu del guion: *funciona al abrirlo en tu navegador*.
 
 ```
-index.html          → punto de entrada
-css/style.css       → estética retro (scanlines, pixelado, cruceta táctil)
-js/engine.js        → motor: render, input, audio chiptune, sprites
-js/game.js          → estados del juego, mapas, eventos, jefe, guardado
-js/data/questions.js→ banco de preguntas por zona + jefe final
-js/data/story.js    → historia, diálogos, mapas, códex y logros
+index.html               → edición 2D
+index3d.html             → edición 3D
+css/style.css            → estética retro 2D
+css/style3d.css          → estética del crawler 3D
+js/engine.js             → motor 2D: render, input, audio, sprites
+js/game.js               → lógica 2D
+js/engine3d.js           → motor 3D en WebGL puro: shaders, texturas y
+                           sprites procedurales, mallas de nivel, billboards
+js/game3d.js             → lógica 3D: dificultad, rejilla, eventos, jefe
+js/audio.js              → chiptune compartido (WebAudio)
+js/data/questions.js     → banco de preguntas por zona + jefe final
+js/data/questions_hard.js→ banco EXPERTO (dificultad DIRECTOR)
+js/data/story.js         → historia, diálogos, mapas, códex y logros
 ```
+
+Ninguna librería externa: el 3D está escrito directamente sobre WebGL, y todas las texturas, sprites y sonidos se generan por código al arrancar.
 
 ---
 
