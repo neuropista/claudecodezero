@@ -116,4 +116,25 @@ Ninguna librería externa: el 3D está escrito directamente sobre WebGL, y todas
 
 ---
 
+## 🟣 NEUROPISTA — Protocolo Núcleo (`neuropista.html`)
+
+Un extra jugable en la misma casa: **roguelite isométrico** en un solo archivo HTML sobre Three.js (r128 por CDN). Eres el **Núcleo**, una esfera de energía que desciende por una red neuronal corrupta purgando a los mini robots que la infectaron.
+
+```
+neuropista.html          → juego completo: abre el archivo y listo
+```
+
+| | |
+|---|---|
+| **Vista** | Isométrica con cámara ortográfica y seguimiento suave |
+| **Salas** | Generadas por procedimiento: pisos de circuito, muros de rack, columnas de datos destructibles |
+| **Objetivos** | `I · NODO DE ENTRADA` purgar · `II · BUS DE DATOS` activar 3 terminales · `III · CACHÉ` sobrevivir 30 s |
+| **Enemigos** | CHIP (persigue y explota), TORRETA (telegrafía en ámbar y dispara ráfagas), ARAÑA DE DATOS (se teletransporta y deja minas) |
+| **Módulos** | Sobrecarga · Divergencia · Impulso · Escudo, uno por sala superada |
+| **Controles** | `WASD` mover · ratón apuntar · clic izq. pulso · `ESPACIO` dash · `E` interactuar · `ESC` pausa |
+
+Toda la geometría, las texturas y el audio se generan por código; la única dependencia externa es Three.js desde CDN. Requiere WebGL.
+
+---
+
 © Neuropista · Material educativo basado en el guion docente "Claude Code sin ser programador".
