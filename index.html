@@ -2,23 +2,39 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>La Senda del Director — Claude Code desde cero</title>
   <meta name="description" content="RPG 2D estilo 90's para aprender Claude Code sin ser programador. Basado en el guion docente de Neuropista.">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎮</text></svg>">
+  <meta name="theme-color" content="#06060c">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="es_ES">
+  <meta property="og:title" content="La Senda del Director — Claude Code desde cero">
+  <meta property="og:description" content="RPG 2D estilo 90's para aprender Claude Code sin ser programador. Basado en el guion docente de Neuropista.">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🎮%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <div id="wrap">
-    <canvas id="game" width="640" height="392"></canvas>
+    <h1 class="sr-only">La Senda del Director — RPG 2D para aprender Claude Code desde cero</h1>
+    <canvas id="game" width="640" height="392"
+            role="img" aria-label="Escena del juego La Senda del Director">
+      Tu navegador no puede mostrar el juego porque no soporta &lt;canvas&gt;.
+      Prueba con Chrome, Edge o Firefox actualizados.
+    </canvas>
+    <noscript>
+      <p class="aviso">
+        Este juego necesita JavaScript para funcionar. Actívalo en tu navegador y recarga la página.
+      </p>
+    </noscript>
     <div id="touch">
       <div id="dpad">
-        <button data-k="ArrowUp" aria-label="Arriba">▲</button>
-        <button data-k="ArrowLeft" aria-label="Izquierda">◀</button>
-        <button data-k="ArrowDown" aria-label="Abajo">▼</button>
-        <button data-k="ArrowRight" aria-label="Derecha">▶</button>
+        <button type="button" data-k="ArrowUp" aria-label="Arriba">▲</button>
+        <button type="button" data-k="ArrowLeft" aria-label="Izquierda">◀</button>
+        <button type="button" data-k="ArrowDown" aria-label="Abajo">▼</button>
+        <button type="button" data-k="ArrowRight" aria-label="Derecha">▶</button>
       </div>
-      <button id="btnA" data-k=" " aria-label="Acción">A</button>
+      <button type="button" id="btnA" data-k=" " aria-label="Acción">A</button>
     </div>
     <p class="crosslink">¿Quieres verlo en primera persona? Juega <a href="index3d.html">la edición 3D con niveles de dificultad</a>.</p>
   </div>

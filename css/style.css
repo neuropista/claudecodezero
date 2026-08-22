@@ -46,6 +46,16 @@ canvas#game {
   );
 }
 
+/* En móvil apaisado el alto no alcanza para canvas + d-pad + enlace, y como el
+   body es overflow:hidden lo que sobra se recorta arriba y abajo (justify-content
+   center), dejando los controles táctiles fuera del alcance del dedo.
+   Reservamos ~150px para el d-pad, el enlace, los gaps y el padding. */
+@media (pointer: coarse) and (orientation: landscape) {
+  canvas#game {
+    width: min(96vw, max(200px, calc((100dvh - 150px) * 640 / 392)));
+  }
+}
+
 /* Controles táctiles: solo en pantallas táctiles */
 #touch { display: none; }
 
@@ -94,3 +104,25 @@ canvas#game {
   text-align: center;
 }
 .crosslink a { color: #7ad7f0; }
+
+/* Aviso de <noscript> */
+.aviso {
+  color: #f2c14e;
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: center;
+  max-width: 44ch;
+}
+
+/* Oculto visualmente, pero visible para lectores de pantalla */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
