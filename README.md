@@ -14,6 +14,7 @@ Basado en el guion docente *"Claude Code sin ser programador"* (Neuropista · An
 |---------|---------|
 | `index.html` | **2D cenital** — estilo RPG clásico de los 90, funciona en cualquier equipo |
 | `index3d.html` | **3D en primera persona** — dungeon crawler con **niveles de dificultad** (requiere WebGL) |
+| `metal-warriors.html` | **Metal Warriors: Protocolo Acero** — plataformas 2D de mecha y piloto, 3 niveles (juego independiente) |
 
 ```
 git clone https://github.com/neuropista/claudecodezero.git
