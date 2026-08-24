@@ -195,17 +195,17 @@ export class Hud {
     this.jefeMostrado = lerp(this.jefeMostrado, frac, 1 - Math.exp(-9 * (this.dt || 1 / 60)));
 
     const w = R.ancho * 0.52, h = 20 * s;
-    const cx = R.ancho * 0.5, cy = R.alto - 150 * s;
+    const cx = R.ancho * 0.5, cy = R.alto - 176 * s;
     const lote = R.lote;
     R.panel(cx, cy, w + 20 * s, h + 22 * s, 1, 1, 1, 0.8);
     lote.push(R.spriteBlanco, cx, cy, w, h, 0, 0.08, 0.03, 0.06, 1, 0, 0);
     lote.push(R.spriteBlanco, cx - w * 0.5 + w * this.jefeMostrado * 0.5, cy, w * this.jefeMostrado, h, 0,
-      1, 0.25, 0.4, 1, 0.6, 0);
+      1, 0.25, 0.4, 1, 0.35, 0);
     // Marcas de fase.
     for (let k = 1; k < 3; k++) {
       lote.push(R.spriteBlanco, cx - w * 0.5 + w * (k / 3), cy, 2 * s, h, 0, 0, 0, 0, 0.9, 0, 0);
     }
-    R.texto('FRAGMENTO PRIMARIO', cx, cy - 26 * s, 0.32 * s, 1, 0.6, 0.65, 0.95, 0.5);
+    R.texto('FRAGMENTO PRIMARIO', cx, cy - 38 * s, 0.32 * s, 1, 0.6, 0.65, 0.95, 0.5);
   }
 
   _cartel(s) {
