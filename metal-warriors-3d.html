@@ -1,0 +1,1645 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>METAL WARRIORS 3D — Protocolo Acero</title>
+<style>
+  :root{
+    --fondo:#05050a;
+    --marco:#3a3f4b;
+    --borde:#565d6d;
+    --texto:#e8f0ff;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{
+    width:100%; height:100%;
+    background:var(--fondo);
+    color:var(--texto);
+    font-family:"Consolas","Menlo","DejaVu Sans Mono",monospace;
+    overflow:hidden;
+  }
+  body{
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    gap:10px;
+    background:radial-gradient(circle at 50% 40%, #10131d 0%, #05050a 70%);
+  }
+  #marco{
+    position:relative;
+    padding:6px;
+    border:2px solid var(--borde);
+    background:linear-gradient(180deg,#22262f,#111319);
+    box-shadow:0 0 0 4px #0b0d12, 0 18px 40px rgba(0,0,0,.75);
+  }
+  #marco::before,#marco::after{
+    content:''; position:absolute; width:10px; height:10px;
+    background:var(--marco); border:1px solid var(--borde);
+  }
+  #marco::before{ left:-7px; top:-7px; }
+  #marco::after{ right:-7px; bottom:-7px; }
+  #pila{ position:relative; width:960px; height:640px; }
+  #pila canvas{
+    position:absolute; inset:0;
+    display:block;
+    width:100%; height:100%;
+  }
+  #escena{ background:#0a0a0f; }
+  #hud{ background:transparent; cursor:crosshair; }
+  #pie{
+    font-size:12px; letter-spacing:1px; color:#6f7893;
+    text-transform:uppercase;
+  }
+  #pie b{ color:#ffd166; font-weight:600; }
+  @media (max-width:1000px), (max-height:780px){
+    #pila{ width:96vw; height:calc(96vw * 0.6667); max-height:76vh; max-width:calc(76vh * 1.5); }
+  }
+</style>
+</head>
+<body>
+  <div id="marco">
+    <div id="pila">
+      <canvas id="escena" width="960" height="640"></canvas>
+      <canvas id="hud" width="960" height="640"></canvas>
+    </div>
+  </div>
+  <p id="pie">A/D mover &middot; W propulsor &middot; <b>ESPACIO</b> disparar &middot; <b>E</b> eyectar/abordar &middot; <b>R</b> reiniciar &middot; <b>C</b> cámara</p>
+
+<script>
+"use strict";
+(function(){
+
+/* ==========================================================================
+   1) CONSTANTES
+   ========================================================================== */
+const TILE      = 32;
+const VIEW_W    = 960;
+const VIEW_H    = 640;
+const PASO      = 1 / 60;          // timestep fijo (segundos)
+const MS_PASO   = 1000 / 60;       // timestep fijo (milisegundos)
+const SUAVIZADO = 0.1;             // lerp de camara
+
+const GRAVEDAD       = 0.55;
+const VEL_CAIDA_MAX  = 12;
+const INVULNERABLE   = 800;        // ms
+const DUREZA_BLOQUE  = 3;          // impactos para romper un bloque tipo 2
+const EPS            = 0.5;        // tolerancia de solape previo (coma flotante)
+
+const MECHA = {
+  w:48, h:64, velX:3.2, salto:-8, propulsor:-0.45,
+  combustibleMax:100, consumo:1.2, recarga:0.6,
+  vidaMax:100, cadencia:350, canon:34
+};
+const PILOTO = {
+  w:14, h:28, velX:4.2, salto:-10.5,
+  vidaMax:1, cadencia:180, canon:10
+};
+const ENEMIGO = {
+  w:26, h:26, velX:1.1, vidaMax:50, cadencia:1500, canon:10
+};
+const DISPARO = {
+  mecha  : { vel:9  , danio:25, w:13, h:5 },
+  piloto : { vel:11 , danio:10, w:9 , h:3 },
+  enemigo: { vel:3.5, danio:20, w:9 , h:6 }
+};
+
+/* Leyenda de los mapas */
+const T = {
+  AIRE:0, ACERO:1, DESTRUCTIBLE:2, PINCHOS:3, META:4,
+  SPAWN_ENEMIGO:5, INTERRUPTOR:6, COMPUERTA:7, SPAWN_JUGADOR:8
+};
+
+/* Paleta industrial / cyberpunk */
+const COLOR = {
+  fondo:'#0a0a0f', rejilla:'#1a1a24',
+  acero:'#3a3f4b', aceroBorde:'#565d6d', aceroSombra:'#2a2e38',
+  destructible:['#6b4423','#8a5b30','#a8763c'], destructibleBorde:'#3d2715',
+  pinchos:'#8a1f1f', pinchosBrillo:'#c93a3a',
+  meta:'#1fd67a',
+  compuerta:'#4d5470', compuertaAviso:'#ffd166',
+  interruptor:'#c8a33a', interruptorOn:'#1fd67a',
+  mecha:'#2f6fd6', mechaOscuro:'#1d4a92', mechaApagado:'#4a5160', cabina:'#5ff0ff',
+  piloto:'#e8e8e8', pilotoOscuro:'#9aa2b1',
+  enemigo:'#9b2fd6', enemigoOscuro:'#661f8f', enemigoOjo:'#ff4d4d',
+  balaJugador:'#ffd166', balaEnemigo:'#ff4d4d',
+  texto:'#e8f0ff', textoTenue:'#7c86a3',
+  hpAlto:'#1fd67a', hpMedio:'#ffb020', hpBajo:'#ff4d4d', combustible:'#3fd8e8'
+};
+
+/* ==========================================================================
+   2) MAPAS  (matrices fijas escritas a mano, nada procedimental)
+   Cada fila es una cadena de digitos -> se compila a una matriz de numeros.
+   Leyenda: 0 aire | 1 acero | 2 destructible | 3 pinchos | 4 meta
+            5 spawn enemigo | 6 interruptor | 7 compuerta | 8 spawn jugador
+   ========================================================================== */
+const NIVELES = [
+  {
+    nombre: 'PATRULLA',
+    ancho: 40, alto: 20,
+    filas: [
+      // fila 0 · techo de acero del sector
+      '1111111111111111111111111111111111111111',
+      // filas 1-5 · corredor superior libre: unico paso por encima del muro central
+      '1000000000000000000000000000000000000001',
+      '1000000000000000000000000000000000000001',
+      '1000000000000000000000000000000000000001',
+      '1000000000000000000000000000000000000001',
+      '1000000000000000000000000000000000000001',
+      // filas 6-10 · muro central de acero (cols 17-18) que obliga a usar el propulsor
+      '1000000000000000011000000000000000000001',
+      '1000000000000000011000000000000000000001',
+      '1000000000000000011000000000000000000001',
+      '1000000000000000011000000000000000000001',
+      '1000000000000050011000050000000000000001',
+      // fila 11 · plataformas elevadas P2 y P3 con los dos enemigos de patrulla
+      '1000000000001111111001111110000000000001',
+      // filas 12-14 · vacio entre plataformas
+      '1000000000000000011000000000000000000001',
+      '1000000000000000011000000000000000000001',
+      '1000000000000000011000000000000000000001',
+      // fila 15 · plataformas de apoyo P1 y P4
+      '1000000011111000011000000000011110000001',
+      // filas 16-17 · nivel del suelo; zona de meta a la derecha (cols 36-37)
+      '1000000000000000011000000000000000004401',
+      '1080000000000000011000000000000000004401',
+      // filas 18-19 · suelo de la base y foso de pinchos previo a la meta
+      '1111111111111111111111111111111110001111',
+      '1111111111111111111111111111111113331111',
+    ]
+  },
+  {
+    nombre: 'ASCENSO',
+    ancho: 20, alto: 45,
+    filas: [
+      // fila 0 · techo del pozo de ascenso
+      '11111111111111111111',
+      '10000000000000000001',
+      '10000000000000000001',
+      '10000000000000000001',
+      // filas 4-5 · META en lo alto de la torre
+      '10000000000440000001',
+      '10000000000440000001',
+      // fila 6 · techo de la CAMARA 2 con hueco de salida (cols 15-17)
+      '11111111111111100011',
+      // filas 7-11 · interior CAMARA 2: divisor con tapon destructible (filas 10-11) y escalon de tiro
+      '10000000011000000001',
+      '10000000011000000001',
+      '10000000011000000001',
+      '10000000022000000001',
+      '10010000022000050001',
+      // fila 12 · suelo de la CAMARA 2 con hueco de entrada (cols 5-7)
+      '11111000111111111111',
+      // filas 13-16 · tramo abierto entre camaras
+      '10000000000000000001',
+      '10000000000000000001',
+      '10000000000000000001',
+      '10000000000000000001',
+      // fila 17 · repisa C (izquierda) con pincho en el borde
+      '11111111111130000001',
+      '10000000000000000001',
+      '10000000000000000001',
+      '10000000000000000001',
+      '10000000000000000001',
+      // fila 22 · techo de la CAMARA 1 con hueco de salida (cols 15-17)
+      '11111111111111100011',
+      // filas 23-27 · interior CAMARA 1: divisor con tapon destructible (filas 26-27) y escalon de tiro
+      '10000000011000000001',
+      '10000000011000000001',
+      '10000000011000000001',
+      '10000000022000000001',
+      '10000010022000500001',
+      // fila 28 · suelo de la CAMARA 1 con hueco de entrada (cols 2-4)
+      '11000111111111111111',
+      // filas 29-32 · tramo abierto de ascenso
+      '10000000000000000001',
+      '10000000000000000001',
+      '10000000000000000001',
+      '10050000000000000001',
+      // fila 33 · repisa B (izquierda) con enemigo y pincho de borde
+      '11111111111130000001',
+      // filas 34-37 · tramo abierto de ascenso
+      '10000000000000000001',
+      '10000000000000000001',
+      '10000000000000000001',
+      '10000000000000000001',
+      // fila 38 · repisa A (derecha), primer salto desde el suelo
+      '10000003111111111111',
+      '10000000000000000001',
+      '10000000000000000001',
+      '10000000000000000001',
+      '10080000000000000001',
+      // filas 43-44 · suelo de partida
+      '11111111111111111111',
+      '11111111111111111111',
+    ]
+  },
+  {
+    nombre: 'EL CONDUCTO',
+    ancho: 45, alto: 25,
+    filas: [
+      // fila 0 · techo blindado de la instalacion
+      '111111111111111111111111111111111111111111111',
+      '100000000000000000110000000000000000000000001',
+      '100000000000000000110000000000000000000000001',
+      '100000000000000000110000000000000000000000001',
+      '100000000000000000110000000000000000000000001',
+      '100000000000000000110000000000000000000000001',
+      '100000000000000000110000000000000000000000001',
+      '100000000000000000110000000000000000000000001',
+      '100000000000000000110000000000000000000000001',
+      // filas 9-10 · COMPUERTA (7) en el divisor + barrera destructible del pasaje
+      '100000000000000000770000022000000000000000001',
+      '100000000000000500770010022000000000000000001',
+      // fila 11 · repisa L2 y suelo del pasaje superior que lleva al pozo de la meta
+      '100000000000011111111111111111111111111000001',
+      // filas 12-16 · hangar abierto / camara del interruptor bajo el pasaje
+      '100000000000000000110000000000000000001000001',
+      '100000000000000000110000000000000000001000001',
+      '100000000000000000110000000000000000001000001',
+      '100000000000000000110000000000000000001000001',
+      '100000000005000000110000000000000000001000001',
+      // fila 17 · repisa L1 de ascenso del mecha
+      '100000000111111000110000000000000000001000001',
+      '100000000000000000110000000000000000001000001',
+      '100000000000000000110000000000000000001000001',
+      '100000000000000000110000000000000000001000001',
+      // filas 21-22 · nivel de operacion: techo del conducto, INTERRUPTOR (col 34) y META (cols 41-42)
+      '100000000000000000110000000000000000001004401',
+      '100000000000800000111111111111000060001004401',
+      // fila 23 · CONDUCTO de 1 tile de alto (cols 18-29): solo cabe el piloto
+      '111333111111111100000000500000011111331111111',
+      // fila 24 · suelo base de la instalacion
+      '111111111111111111111111111111111111111111111',
+    ]
+  },
+];
+
+/* Comprueba en el arranque que ninguna matriz esta mal formada. */
+function validarNiveles(){
+  const errores = [];
+  NIVELES.forEach((nv, i) => {
+    if (nv.filas.length !== nv.alto) errores.push('Nivel ' + (i+1) + ': altura ' + nv.filas.length + ' != ' + nv.alto);
+    nv.filas.forEach((f, r) => {
+      if (f.length !== nv.ancho) errores.push('Nivel ' + (i+1) + ' fila ' + r + ': ' + f.length + ' cols != ' + nv.ancho);
+    });
+    const texto = nv.filas.join('');
+    if ((texto.match(/8/g) || []).length !== 1) errores.push('Nivel ' + (i+1) + ': debe haber exactamente un spawn (8)');
+    if (texto.indexOf('4') < 0) errores.push('Nivel ' + (i+1) + ': sin meta (4)');
+  });
+  if (errores.length) console.error('MAPAS INVALIDOS:\n' + errores.join('\n'));
+  return errores.length === 0;
+}
+
+/* ==========================================================================
+   3) INPUT  (mapa de teclas; la logica NUNCA vive dentro del listener)
+   ========================================================================== */
+const K = {
+  IZQ:       ['KeyA','ArrowLeft'],
+  DER:       ['KeyD','ArrowRight'],
+  ARRIBA:    ['KeyW','ArrowUp'],
+  DISPARO:   ['Space'],
+  EYECTAR:   ['KeyE'],
+  REINICIAR: ['KeyR'],
+  CAMARA:    ['KeyC'],
+  CONFIRMAR: ['Enter','NumpadEnter','Space'],
+  MENU:      ['Escape','KeyM']
+};
+const BLOQUEAR = ['Space','ArrowLeft','ArrowRight','ArrowUp','ArrowDown'];
+
+const Input = {
+  teclas: Object.create(null),      // teclas mantenidas
+  pendientes: Object.create(null),  // flancos de bajada aun no consumidos
+  raton: false,
+  // Los listeners SOLO registran; toda la logica vive en el bucle de juego.
+  iniciar(lienzo){
+    window.addEventListener('keydown', e => {
+      if (BLOQUEAR.indexOf(e.code) >= 0) e.preventDefault();
+      if (!e.repeat && !Input.teclas[e.code]) Input.pendientes[e.code] = true;
+      Input.teclas[e.code] = true;
+    });
+    window.addEventListener('keyup', e => {
+      if (BLOQUEAR.indexOf(e.code) >= 0) e.preventDefault();
+      Input.teclas[e.code] = false;
+    });
+    window.addEventListener('blur', () => {
+      Input.teclas = Object.create(null);
+      Input.pendientes = Object.create(null);
+      Input.raton = false;
+    });
+    lienzo.addEventListener('mousedown', e => { if (e.button === 0) { Input.raton = true; e.preventDefault(); } });
+    window.addEventListener('mouseup',  e => { if (e.button === 0) Input.raton = false; });
+    lienzo.addEventListener('contextmenu', e => e.preventDefault());
+  },
+  activa(lista){
+    for (let i = 0; i < lista.length; i++) if (this.teclas[lista[i]]) return true;
+    return false;
+  },
+  // Un toque muy breve tambien cuenta: el flanco queda en cola hasta consumirse.
+  pulsada(lista){
+    for (let i = 0; i < lista.length; i++) if (this.pendientes[lista[i]]) return true;
+    return false;
+  },
+  dispara(){ return this.activa(K.DISPARO) || this.raton; },
+  finFrame(){ this.pendientes = Object.create(null); }
+};
+
+/* ==========================================================================
+   4) ESTADO GLOBAL UNICO + ENTIDADES
+   ========================================================================== */
+const G = {
+  estado: 'MENU',            // MENU | JUGANDO | TRANSICION | GAME_OVER | VICTORIA
+  nivelIdx: 0,
+  ancho: 0, alto: 0,
+  mapa: [],                  // matriz de numeros del nivel en curso
+  danioBloque: Object.create(null),
+  mecha: null,
+  piloto: null,              // existe solo cuando el piloto esta fuera
+  control: 'mecha',          // 'mecha' | 'piloto'
+  enemigos: [], balas: [], particulas: [],
+  camara: { x:0, y:0 },
+  sacudida: 0,
+  tiempo: 0,                 // ms de partida (para cadencias)
+  interruptor: false,
+  aviso: '', avisoHasta: 0,
+  mallaSucia: true,          // pide reconstruir la malla estatica del nivel
+  cronoEstado: 0,            // ms restantes en pantallas de transicion
+  motivo: '',                // texto de game over
+  acumulador: 0, ultimoT: 0
+};
+
+function crearMecha(col, fila){
+  return {
+    tipo:'mecha', x: col*TILE + (TILE - MECHA.w)/2, y: (fila+1)*TILE - MECHA.h,
+    w: MECHA.w, h: MECHA.h, vx:0, vy:0, dir:1,
+    enSuelo:false, choque:false,
+    vida: MECHA.vidaMax, combustible: MECHA.combustibleMax,
+    recarga:0, invulnerable:0, apagado:false, propulsando:false,
+    paso:0, retroceso:0
+  };
+}
+function crearPiloto(x, y, dir){
+  return {
+    tipo:'piloto', x:x, y:y, w:PILOTO.w, h:PILOTO.h, vx:0, vy:0, dir:dir||1,
+    enSuelo:false, choque:false, vida:PILOTO.vidaMax,
+    recarga:0, invulnerable:0, paso:0, retroceso:0
+  };
+}
+function crearEnemigo(col, fila){
+  return {
+    tipo:'enemigo', x: col*TILE + (TILE - ENEMIGO.w)/2, y:(fila+1)*TILE - ENEMIGO.h,
+    w: ENEMIGO.w, h: ENEMIGO.h, vx:0, vy:0, dir:-1,
+    enSuelo:false, choque:false, vida: ENEMIGO.vidaMax,
+    recarga: 400 + ((col * 137 + fila * 61) % 900), paso:0
+  };
+}
+function activo(){ return G.control === 'mecha' ? G.mecha : G.piloto; }
+
+/* Carga (o recarga) un nivel desde su matriz literal: estado 100% limpio. */
+function cargarNivel(idx){
+  const nv = NIVELES[idx];
+  G.nivelIdx = idx;
+  G.ancho = nv.ancho;
+  G.alto  = nv.alto;
+  G.mapa  = nv.filas.map(function(f){
+    const fila = new Array(f.length);
+    for (let c = 0; c < f.length; c++) fila[c] = f.charCodeAt(c) - 48;
+    return fila;
+  });
+  G.danioBloque = Object.create(null);
+  G.enemigos = []; G.balas = []; G.particulas = [];
+  G.interruptor = false;
+  G.aviso = ''; G.avisoHasta = 0;
+  G.sacudida = 0;
+  G.tiempo = 0;
+  G.motivo = '';
+
+  let spawn = { c:1, r:1 };
+  for (let r = 0; r < G.alto; r++){
+    for (let c = 0; c < G.ancho; c++){
+      const t = G.mapa[r][c];
+      if (t === T.SPAWN_ENEMIGO){ G.mapa[r][c] = T.AIRE; G.enemigos.push(crearEnemigo(c, r)); }
+      else if (t === T.SPAWN_JUGADOR){ G.mapa[r][c] = T.AIRE; spawn = { c:c, r:r }; }
+    }
+  }
+  G.mecha  = crearMecha(spawn.c, spawn.r);
+  G.piloto = null;
+  G.control = 'mecha';
+  G.mallaSucia = true;                 // el render 3D reconstruye la geometria
+  actualizarCamara(true);
+}
+
+function avisar(texto, ms){ G.aviso = texto; G.avisoHasta = G.tiempo + (ms || 1200); }
+
+/* ==========================================================================
+   5) FISICA Y COLISIONES  (AABB en dos pasadas: X primero, luego Y)
+   ========================================================================== */
+function tileEn(c, r){
+  if (c < 0 || c >= G.ancho || r < 0) return T.ACERO;   // fuera del mapa: muro
+  if (r >= G.alto) return T.AIRE;                        // por debajo: vacio
+  return G.mapa[r][c];
+}
+function esSolido(t){
+  return t === T.ACERO || t === T.DESTRUCTIBLE || t === T.PINCHOS || t === T.COMPUERTA;
+}
+function solidoEn(c, r){ return esSolido(tileEn(c, r)); }
+
+function solapan(a, b){
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+function chocaConMapa(r){
+  const c0 = Math.floor(r.x / TILE), c1 = Math.floor((r.x + r.w - 0.001) / TILE);
+  const f0 = Math.floor(r.y / TILE), f1 = Math.floor((r.y + r.h - 0.001) / TILE);
+  for (let f = f0; f <= f1; f++)
+    for (let c = c0; c <= c1; c++)
+      if (solidoEn(c, f)) return true;
+  return false;
+}
+
+/* Pasada del eje X */
+function resolverX(e, dx, solidos){
+  if (dx === 0) return;
+  const antes = e.x;                       // posicion previa al sub-paso
+  e.x += dx;
+  const c0 = Math.floor(e.x / TILE), c1 = Math.floor((e.x + e.w - 0.001) / TILE);
+  const f0 = Math.floor(e.y / TILE), f1 = Math.floor((e.y + e.h - 0.001) / TILE);
+  for (let f = f0; f <= f1; f++){
+    for (let c = c0; c <= c1; c++){
+      if (!solidoEn(c, f)) continue;
+      // solo frena lo que se cruza en este paso, nunca un tile que ya se solapaba
+      if (dx > 0 ? (antes + e.w > c*TILE + EPS) : (antes < (c+1)*TILE - EPS)) continue;
+      e.x = dx > 0 ? c*TILE - e.w : (c+1)*TILE;
+      e.vx = 0; e.choque = true;
+      return;
+    }
+  }
+  if (solidos){
+    for (let i = 0; i < solidos.length; i++){
+      const s = solidos[i];
+      if (s === e || !solapan(e, s)) continue;
+      if (dx > 0 ? (antes + e.w > s.x + EPS) : (antes < s.x + s.w - EPS)) continue;
+      e.x = dx > 0 ? s.x - e.w : s.x + s.w;
+      e.vx = 0; e.choque = true;
+      return;
+    }
+  }
+}
+/* Pasada del eje Y */
+function resolverY(e, dy, solidos){
+  if (dy === 0) return;
+  const antes = e.y;                       // posicion previa al sub-paso
+  e.y += dy;
+  const c0 = Math.floor(e.x / TILE), c1 = Math.floor((e.x + e.w - 0.001) / TILE);
+  const f0 = Math.floor(e.y / TILE), f1 = Math.floor((e.y + e.h - 0.001) / TILE);
+  for (let f = f0; f <= f1; f++){
+    for (let c = c0; c <= c1; c++){
+      if (!solidoEn(c, f)) continue;
+      if (dy > 0 ? (antes + e.h > f*TILE + EPS) : (antes < (f+1)*TILE - EPS)) continue;
+      if (dy > 0){ e.y = f*TILE - e.h; e.enSuelo = true; } else { e.y = (f+1)*TILE; }
+      e.vy = 0;
+      return;
+    }
+  }
+  if (solidos){
+    for (let i = 0; i < solidos.length; i++){
+      const s = solidos[i];
+      if (s === e || !solapan(e, s)) continue;
+      if (dy > 0 ? (antes + e.h > s.y + EPS) : (antes < s.y + s.h - EPS)) continue;
+      if (dy > 0){ e.y = s.y - e.h; e.enSuelo = true; } else { e.y = s.y + s.h; }
+      e.vy = 0;
+      return;
+    }
+  }
+}
+/* Movimiento con anti-tunneling: subdivide si un eje supera TILE/2 */
+function mover(e, solidos){
+  e.choque = false;
+  e.enSuelo = false;
+  const maxima = Math.max(Math.abs(e.vx), Math.abs(e.vy));
+  const pasos  = Math.max(1, Math.ceil(maxima / (TILE / 2)));
+  const sx = e.vx / pasos, sy = e.vy / pasos;
+  for (let i = 0; i < pasos; i++){
+    resolverX(e, sx, solidos);
+    resolverY(e, sy, solidos);
+  }
+}
+/* Lista de solidos moviles: el mecha apagado es plataforma para el piloto */
+function solidosDinamicos(){
+  return (G.mecha && G.mecha.apagado) ? [G.mecha] : null;
+}
+/* Recorre los tiles que solapa una entidad */
+function porCadaTile(e, fn){
+  const c0 = Math.floor(e.x / TILE), c1 = Math.floor((e.x + e.w - 0.001) / TILE);
+  const f0 = Math.floor(e.y / TILE), f1 = Math.floor((e.y + e.h - 0.001) / TILE);
+  for (let f = f0; f <= f1; f++)
+    for (let c = c0; c <= c1; c++)
+      fn(c, f, tileEn(c, f));
+}
+
+function sacudir(fuerza){ G.sacudida = Math.min(14, Math.max(G.sacudida, fuerza)); }
+
+/* ==========================================================================
+   6) DISPAROS, DANIO Y PARTICULAS
+   ========================================================================== */
+function disparar(e, tipo){
+  const d = DISPARO[tipo];
+  const canon = tipo === 'mecha' ? MECHA.canon : (tipo === 'piloto' ? PILOTO.canon : ENEMIGO.canon);
+  G.balas.push({
+    x: e.dir > 0 ? e.x + e.w - 4 : e.x - d.w + 4,
+    y: e.y + canon - d.h / 2,
+    w: d.w, h: d.h, vx: d.vel * e.dir, danio: d.danio, dueno: tipo, vida: 220
+  });
+  e.retroceso = 4;
+}
+
+function escombros(x, y, cantidad, color){
+  for (let i = 0; i < cantidad; i++){
+    G.particulas.push({
+      x:x, y:y,
+      vx:(Math.random() - 0.5) * 5,
+      vy:-Math.random() * 4 - 1,
+      tam: 2 + Math.random() * 4,
+      vida: 30 + Math.random() * 30,
+      color: color
+    });
+  }
+}
+
+function danarBloque(c, f){
+  const clave = c + ',' + f;
+  const n = (G.danioBloque[clave] || 0) + 1;
+  G.danioBloque[clave] = n;
+  G.mallaSucia = true;
+  if (n >= DUREZA_BLOQUE){
+    G.mapa[f][c] = T.AIRE;
+    delete G.danioBloque[clave];
+    escombros(c*TILE + TILE/2, f*TILE + TILE/2, 12, COLOR.destructible[0]);
+    sacudir(5);
+  } else {
+    escombros(c*TILE + TILE/2, f*TILE + TILE/2, 4, COLOR.destructible[2]);
+    sacudir(2);
+  }
+}
+
+function danarMecha(cantidad){
+  const m = G.mecha;
+  if (m.apagado || m.invulnerable > 0) return;   // apagado no recibe danio
+  m.vida -= cantidad;
+  m.invulnerable = INVULNERABLE;
+  sacudir(8);
+  escombros(m.x + m.w/2, m.y + m.h/2, 8, COLOR.mecha);
+  if (m.vida <= 0){
+    m.vida = 0;
+    escombros(m.x + m.w/2, m.y + m.h/2, 26, COLOR.mechaOscuro);
+    terminarPartida('MECHA DESTRUIDO');
+  }
+}
+function matarPiloto(motivo){
+  if (!G.piloto) return;
+  escombros(G.piloto.x + G.piloto.w/2, G.piloto.y + G.piloto.h/2, 16, COLOR.piloto);
+  escombros(G.piloto.x + G.piloto.w/2, G.piloto.y + G.piloto.h/2, 6, COLOR.balaEnemigo);
+  G.piloto = null;
+  sacudir(9);
+  terminarPartida(motivo || 'PILOTO ABATIDO');
+}
+function terminarPartida(motivo){
+  G.motivo = motivo;
+  G.estado = 'GAME_OVER';
+  G.cronoEstado = 700;   // pequeno bloqueo antes de aceptar teclas
+}
+
+/* ==========================================================================
+   7) EYECCION / ABORDAJE
+   ========================================================================== */
+function eyectar(){
+  const m = G.mecha;
+  const prueba = {
+    x: m.x + (m.w - PILOTO.w) / 2,
+    y: m.y - PILOTO.h - 2,
+    w: PILOTO.w, h: PILOTO.h
+  };
+  if (chocaConMapa(prueba)){
+    avisar('ESPACIO INSUFICIENTE', 1500);
+    return;
+  }
+  G.piloto = crearPiloto(prueba.x, prueba.y, m.dir);
+  G.piloto.vy = -4.5;                 // pequeno impulso vertical
+  G.piloto.invulnerable = 350;
+  m.apagado = true;
+  m.vx = 0;
+  m.propulsando = false;
+  G.control = 'piloto';
+  avisar('PILOTO FUERA', 900);
+}
+function abordar(){
+  const p = G.piloto, m = G.mecha;
+  const contacto = { x:p.x - 3, y:p.y - 3, w:p.w + 6, h:p.h + 6 };
+  if (!solapan(contacto, m)){
+    avisar('SIN CONTACTO CON EL MECHA', 900);
+    return;
+  }
+  m.apagado = false;
+  m.dir = p.dir;
+  G.piloto = null;
+  G.control = 'mecha';
+  avisar('MECHA OPERATIVO', 900);
+}
+
+/* ==========================================================================
+   8) IA DE ENEMIGOS
+   ========================================================================== */
+function actualizarEnemigos(){
+  const solidos = solidosDinamicos();
+  for (let i = G.enemigos.length - 1; i >= 0; i--){
+    const en = G.enemigos[i];
+    en.vx = ENEMIGO.velX * en.dir;
+    en.vy = Math.min(en.vy + GRAVEDAD, VEL_CAIDA_MAX);
+    mover(en, solidos);
+    en.paso += Math.abs(en.vx);
+
+    if (en.choque){
+      en.dir *= -1;                                   // choco con un bloque
+    } else if (en.enSuelo){
+      const puntaX = en.dir > 0 ? en.x + en.w + 2 : en.x - 2;
+      const c = Math.floor(puntaX / TILE);
+      const f = Math.floor((en.y + en.h + 2) / TILE);
+      if (!solidoEn(c, f)) en.dir *= -1;               // borde de plataforma
+    }
+
+    en.recarga -= MS_PASO;
+    if (en.recarga <= 0){
+      en.recarga = ENEMIGO.cadencia;
+      disparar(en, 'enemigo');
+    }
+
+    // contacto directo: el piloto muere al instante
+    if (G.piloto && solapan(en, G.piloto) && G.piloto.invulnerable <= 0){
+      matarPiloto('PILOTO ABATIDO EN CONTACTO');
+      return;
+    }
+  }
+}
+
+/* ==========================================================================
+   9) ACTUALIZACION DE LA PARTIDA
+   ========================================================================== */
+function actualizarMecha(){
+  const m = G.mecha;
+  if (m.invulnerable > 0) m.invulnerable -= MS_PASO;
+  if (m.retroceso > 0) m.retroceso -= 1;
+
+  if (m.apagado){                                     // objeto estatico y solido
+    m.vx = 0;
+    m.vy = Math.min(m.vy + GRAVEDAD, VEL_CAIDA_MAX);
+    m.propulsando = false;
+    mover(m, null);
+    return;
+  }
+
+  const izq = Input.activa(K.IZQ), der = Input.activa(K.DER);
+  m.vx = (der ? MECHA.velX : 0) - (izq ? MECHA.velX : 0);
+  if (m.vx !== 0) m.dir = m.vx > 0 ? 1 : -1;
+  if (m.enSuelo && m.vx !== 0) m.paso += Math.abs(m.vx);
+
+  if (Input.pulsada(K.ARRIBA) && m.enSuelo) m.vy = MECHA.salto;
+
+  m.vy += GRAVEDAD;
+  m.propulsando = false;
+  if (Input.activa(K.ARRIBA) && !m.enSuelo && m.combustible > 0){
+    m.vy += MECHA.propulsor;                          // empuje continuo
+    m.combustible = Math.max(0, m.combustible - MECHA.consumo);
+    m.propulsando = true;
+  }
+  if (m.vy > VEL_CAIDA_MAX) m.vy = VEL_CAIDA_MAX;
+
+  mover(m, null);
+
+  if (m.enSuelo) m.combustible = Math.min(MECHA.combustibleMax, m.combustible + MECHA.recarga);
+
+  if (m.recarga > 0) m.recarga -= MS_PASO;
+  if (Input.dispara() && m.recarga <= 0){
+    m.recarga = MECHA.cadencia;
+    disparar(m, 'mecha');
+    sacudir(1.5);
+  }
+}
+
+function actualizarPiloto(){
+  const p = G.piloto;
+  if (p.invulnerable > 0) p.invulnerable -= MS_PASO;
+  if (p.retroceso > 0) p.retroceso -= 1;
+
+  const izq = Input.activa(K.IZQ), der = Input.activa(K.DER);
+  p.vx = (der ? PILOTO.velX : 0) - (izq ? PILOTO.velX : 0);
+  if (p.vx !== 0) p.dir = p.vx > 0 ? 1 : -1;
+  if (p.enSuelo && p.vx !== 0) p.paso += Math.abs(p.vx);
+
+  if (Input.pulsada(K.ARRIBA) && p.enSuelo) p.vy = PILOTO.salto;
+  p.vy = Math.min(p.vy + GRAVEDAD, VEL_CAIDA_MAX);
+
+  mover(p, solidosDinamicos());
+
+  if (p.recarga > 0) p.recarga -= MS_PASO;
+  if (Input.dispara() && p.recarga <= 0){
+    p.recarga = PILOTO.cadencia;
+    disparar(p, 'piloto');
+  }
+}
+
+function actualizarBalas(){
+  const m = G.mecha;
+  for (let i = G.balas.length - 1; i >= 0; i--){
+    const b = G.balas[i];
+    let muerta = false;
+    const pasos = Math.max(1, Math.ceil(Math.abs(b.vx) / (TILE / 2)));
+    const paso = b.vx / pasos;
+
+    for (let s = 0; s < pasos && !muerta; s++){
+      b.x += paso;
+      const c = Math.floor((b.x + b.w/2) / TILE);
+      const f = Math.floor((b.y + b.h/2) / TILE);
+      const t = tileEn(c, f);
+      if (esSolido(t)){
+        if (t === T.DESTRUCTIBLE && b.dueno === 'mecha') danarBloque(c, f);
+        else escombros(b.x + b.w/2, b.y + b.h/2, 3, b.dueno === 'enemigo' ? COLOR.balaEnemigo : COLOR.balaJugador);
+        muerta = true;
+        break;
+      }
+      if (b.dueno === 'enemigo'){
+        if (m && m.apagado && solapan(b, m)){          // el mecha apagado hace de escudo
+          escombros(b.x, b.y, 3, COLOR.balaEnemigo);
+          muerta = true; break;
+        }
+        if (G.control === 'mecha' && solapan(b, m)){ danarMecha(b.danio); muerta = true; break; }
+        if (G.control === 'piloto' && G.piloto && G.piloto.invulnerable <= 0 && solapan(b, G.piloto)){
+          matarPiloto('PILOTO ALCANZADO');
+          muerta = true; break;
+        }
+      } else {
+        for (let j = G.enemigos.length - 1; j >= 0; j--){
+          const en = G.enemigos[j];
+          if (!solapan(b, en)) continue;
+          en.vida -= b.danio;
+          escombros(b.x, b.y, 4, COLOR.enemigo);
+          if (en.vida <= 0){
+            escombros(en.x + en.w/2, en.y + en.h/2, 18, COLOR.enemigoOscuro);
+            escombros(en.x + en.w/2, en.y + en.h/2, 8, COLOR.enemigoOjo);
+            G.enemigos.splice(j, 1);
+            sacudir(4);
+          }
+          muerta = true;
+          break;
+        }
+      }
+    }
+    b.vida -= 1;
+    if (muerta || b.vida <= 0 || b.x < -64 || b.x > G.ancho*TILE + 64) G.balas.splice(i, 1);
+  }
+}
+
+function actualizarParticulas(){
+  for (let i = G.particulas.length - 1; i >= 0; i--){
+    const p = G.particulas[i];
+    p.vy += GRAVEDAD * 0.6;
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vida -= 1;
+    if (p.vida <= 0) G.particulas.splice(i, 1);
+  }
+}
+
+/* Pinchos, meta e interruptor */
+function comprobarTilesEspeciales(){
+  const e = activo();
+  if (!e) return;
+  // caja inflada: pisar un tile cuenta como tocarlo (pinchos, meta, interruptor)
+  const caja = { x: e.x - 2, y: e.y - 2, w: e.w + 4, h: e.h + 4 };
+  let meta = false, interruptor = false, pincho = false;
+  porCadaTile(caja, function(c, f, t){
+    if (t === T.META) meta = true;
+    else if (t === T.INTERRUPTOR) interruptor = true;
+    else if (t === T.PINCHOS) pincho = true;
+  });
+
+  if (pincho && G.control === 'piloto'){ matarPiloto('PILOTO EMPALADO'); return; }
+
+  if (interruptor && G.control === 'piloto' && !G.interruptor){
+    G.interruptor = true;
+    for (let r = 0; r < G.alto; r++)
+      for (let c = 0; c < G.ancho; c++)
+        if (G.mapa[r][c] === T.COMPUERTA){
+          G.mapa[r][c] = T.AIRE;
+          G.mallaSucia = true;
+          escombros(c*TILE + TILE/2, r*TILE + TILE/2, 6, COLOR.compuerta);
+        }
+    sacudir(10);
+    avisar('INTERRUPTOR ACTIVADO', 2500);
+  }
+
+  if (meta){
+    G.estado = 'TRANSICION';
+    G.cronoEstado = 1800;
+  }
+}
+
+function actualizarPartida(){
+  if (Input.pulsada(K.REINICIAR)){ cargarNivel(G.nivelIdx); return; }
+
+  if (Input.pulsada(K.EYECTAR)){
+    if (G.control === 'mecha') eyectar();
+    else abordar();
+  }
+
+  if (G.control === 'mecha') actualizarMecha();
+  else { actualizarMecha(); actualizarPiloto(); }   // el mecha apagado sigue cayendo
+
+  if (G.estado !== 'JUGANDO') return;
+  actualizarEnemigos();
+  if (G.estado !== 'JUGANDO') return;
+  actualizarBalas();
+  actualizarParticulas();
+  comprobarTilesEspeciales();
+  if (G.estado !== 'JUGANDO') return;
+
+  // red de seguridad: caida fuera del mapa
+  const e = activo();
+  if (e && e.y > G.alto * TILE + 200){
+    if (G.control === 'piloto') matarPiloto('PILOTO PERDIDO EN EL VACIO');
+    else terminarPartida('MECHA PERDIDO EN EL VACIO');
+  }
+  actualizarCamara(false);
+}
+
+function actualizarCamara(inmediata){
+  const e = activo() || G.mecha;
+  const mapaW = G.ancho * TILE, mapaH = G.alto * TILE;
+  let tx = e.x + e.w/2 - VIEW_W/2;
+  let ty = e.y + e.h/2 - VIEW_H/2;
+  tx = mapaW <= VIEW_W ? (mapaW - VIEW_W)/2 : Math.max(0, Math.min(tx, mapaW - VIEW_W));
+  ty = mapaH <= VIEW_H ? (mapaH - VIEW_H)/2 : Math.max(0, Math.min(ty, mapaH - VIEW_H));
+  if (inmediata){ G.camara.x = tx; G.camara.y = ty; }
+  else {
+    G.camara.x += (tx - G.camara.x) * SUAVIZADO;
+    G.camara.y += (ty - G.camara.y) * SUAVIZADO;
+  }
+}
+
+/* ==========================================================================
+   10) RENDER 3D  (WebGL puro, sin librerias; toda la geometria se genera
+       por codigo a partir de las mismas matrices del juego)
+
+   Convenio de coordenadas del mundo: 1 tile = 1 unidad.
+       mundoX =  pixelX / TILE          (crece a la derecha)
+       mundoY = -pixelY / TILE          (crece hacia arriba)
+       z = 0 es el plano de juego; los bloques ocupan z de -0.5 a +0.5
+   ========================================================================== */
+const escena = document.getElementById('escena');
+const hud    = document.getElementById('hud');
+const ctx    = hud.getContext('2d');
+const gl     = escena.getContext('webgl', { antialias:true, alpha:false, depth:true })
+            || escena.getContext('experimental-webgl', { antialias:true, alpha:false, depth:true });
+
+/* ------------------------- matematica de matrices ------------------------- */
+function perspectiva(fovGrados, aspecto, cerca, lejos){
+  const f = 1 / Math.tan(fovGrados * Math.PI / 360);
+  const nf = 1 / (cerca - lejos);
+  return new Float32Array([
+    f/aspecto, 0, 0, 0,
+    0, f, 0, 0,
+    0, 0, (lejos + cerca) * nf, -1,
+    0, 0, 2 * lejos * cerca * nf, 0
+  ]);
+}
+function mirarA(ex, ey, ez, cx, cy, cz){
+  let fx = cx-ex, fy = cy-ey, fz = cz-ez;
+  let l = 1 / (Math.hypot(fx, fy, fz) || 1); fx*=l; fy*=l; fz*=l;
+  let sx = fy*0 - fz*1, sy = fz*0 - fx*0, sz = fx*1 - fy*0;   // f x (0,1,0)
+  l = 1 / (Math.hypot(sx, sy, sz) || 1); sx*=l; sy*=l; sz*=l;
+  const ux = sy*fz - sz*fy, uy = sz*fx - sx*fz, uz = sx*fy - sy*fx;
+  return new Float32Array([
+    sx, ux, -fx, 0,
+    sy, uy, -fy, 0,
+    sz, uz, -fz, 0,
+    -(sx*ex + sy*ey + sz*ez), -(ux*ex + uy*ey + uz*ez), (fx*ex + fy*ey + fz*ez), 1
+  ]);
+}
+
+/* ------------------------------- paleta 3D -------------------------------- */
+function rgb(hex){
+  const n = parseInt(hex.slice(1), 16);
+  return [((n>>16)&255)/255, ((n>>8)&255)/255, (n&255)/255];
+}
+const _cacheRGB = Object.create(null);
+function rgbc(hex){ return _cacheRGB[hex] || (_cacheRGB[hex] = rgb(hex)); }
+function mezclar(a, b, t){ return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t]; }
+
+const C3 = {
+  acero:        rgb(COLOR.acero),
+  aceroClaro:   rgb(COLOR.aceroBorde),
+  aceroOscuro:  rgb(COLOR.aceroSombra),
+  destr:        COLOR.destructible.map(rgb),
+  destrBorde:   rgb(COLOR.destructibleBorde),
+  pinchos:      rgb(COLOR.pinchos),
+  pinchosPunta: rgb(COLOR.pinchosBrillo),
+  meta:         rgb(COLOR.meta),
+  compuerta:    rgb(COLOR.compuerta),
+  aviso:        rgb(COLOR.compuertaAviso),
+  interruptor:  rgb(COLOR.interruptor),
+  interruptorOn:rgb(COLOR.interruptorOn),
+  mecha:        rgb(COLOR.mecha),
+  mechaOscuro:  rgb(COLOR.mechaOscuro),
+  mechaApagado: rgb(COLOR.mechaApagado),
+  cabina:       rgb(COLOR.cabina),
+  piloto:       rgb(COLOR.piloto),
+  pilotoOscuro: rgb(COLOR.pilotoOscuro),
+  enemigo:      rgb(COLOR.enemigo),
+  enemigoOscuro:rgb(COLOR.enemigoOscuro),
+  enemigoOjo:   rgb(COLOR.enemigoOjo),
+  balaJugador:  rgb(COLOR.balaJugador),
+  balaEnemigo:  rgb(COLOR.balaEnemigo),
+  niebla:       rgb('#0a0a0f'),
+  pared:        rgb('#14161f'),
+  pilar:        rgb('#1d212b'),
+  viga:         rgb('#252a36'),
+  sombra:       rgb('#07070c'),
+  metal:        rgb('#20242c')
+};
+
+/* --------------------- iluminacion plana por cara ------------------------- */
+const LUZ = { arriba:1.26, abajo:0.44, frente:1.02, fondo:0.52, izq:0.68, der:0.84 };
+
+/* ------------------------------ estado GL --------------------------------- */
+const R3 = {
+  prog:null, loc:{}, bufEst:null, nEst:0, bufDin:null,
+  datosDin: new Float32Array(1600 * 36 * 8),
+  modo: 1,            // 0 = lateral puro, 1 = escorzo (por defecto)
+  giro: 0,            // desplazamiento lateral suavizado de la camara
+  soportado: !!gl
+};
+
+/* Escritor de vertices: 8 floats por vertice (pos3, color3, sombreado, emision) */
+let _buf = null, _i = 0, _tr = null;
+function vertice(x, y, z, col, sombra, emision){
+  if (_tr){
+    const dx = x - _tr.cx, dz = z - _tr.cz;
+    x = _tr.cx + dx*_tr.co - dz*_tr.si;
+    z = _tr.cz + dx*_tr.si + dz*_tr.co;
+  }
+  _buf[_i++] = x; _buf[_i++] = y; _buf[_i++] = z;
+  _buf[_i++] = col[0]; _buf[_i++] = col[1]; _buf[_i++] = col[2];
+  _buf[_i++] = sombra; _buf[_i++] = emision || 0;
+}
+function quad(a, b, c, d, col, sombra, em){
+  if (_i + 48 > _buf.length) return;          // el lote esta lleno: descarta
+  vertice(a[0],a[1],a[2], col, sombra, em); vertice(b[0],b[1],b[2], col, sombra, em); vertice(c[0],c[1],c[2], col, sombra, em);
+  vertice(a[0],a[1],a[2], col, sombra, em); vertice(c[0],c[1],c[2], col, sombra, em); vertice(d[0],d[1],d[2], col, sombra, em);
+}
+/* Caja alineada a los ejes: (x,y,z) es la esquina minima */
+function caja(x, y, z, w, h, d, col, em){
+  const X = x+w, Y = y+h, Z = z+d;
+  quad([x,y,Z],[X,y,Z],[X,Y,Z],[x,Y,Z], col, LUZ.frente, em);   // frente
+  quad([X,y,z],[x,y,z],[x,Y,z],[X,Y,z], col, LUZ.fondo,  em);   // fondo
+  quad([x,Y,Z],[X,Y,Z],[X,Y,z],[x,Y,z], col, LUZ.arriba, em);   // techo
+  quad([x,y,z],[X,y,z],[X,y,Z],[x,y,Z], col, LUZ.abajo,  em);   // base
+  quad([x,y,z],[x,y,Z],[x,Y,Z],[x,Y,z], col, LUZ.izq,    em);   // izquierda
+  quad([X,y,Z],[X,y,z],[X,Y,z],[X,Y,Z], col, LUZ.der,    em);   // derecha
+}
+/* Piramide de base cuadrada (pinchos) */
+function piramide(cx, cz, y0, y1, r, col, em){
+  if (_i + 96 > _buf.length) return;
+  const p = [cx, y1, cz];
+  const b = [[cx-r,y0,cz-r],[cx+r,y0,cz-r],[cx+r,y0,cz+r],[cx-r,y0,cz+r]];
+  const sombras = [LUZ.fondo, LUZ.der, LUZ.frente, LUZ.izq];
+  for (let k = 0; k < 4; k++){
+    const q = b[(k+1)%4], s = b[k];        // orden antihorario visto desde fuera
+    vertice(q[0],q[1],q[2], col, sombras[k], em);
+    vertice(s[0],s[1],s[2], col, sombras[k], em);
+    vertice(p[0],p[1],p[2], col === C3.pinchos ? C3.pinchosPunta : col, sombras[k]*1.25, em);
+  }
+}
+
+/* --------------------------- programa de shaders -------------------------- */
+const VS = [
+  'attribute vec3 aPos;',
+  'attribute vec3 aCol;',
+  'attribute float aSombra;',
+  'attribute float aEmis;',
+  'uniform mat4 uProj;',
+  'uniform mat4 uView;',
+  'varying vec3 vCol;',
+  'varying float vNiebla;',
+  'varying float vEmis;',
+  'void main(){',
+  '  vec4 p = uView * vec4(aPos, 1.0);',
+  '  float dist = length(p.xyz);',
+  '  vNiebla = clamp((dist - 19.0) / 30.0, 0.0, 1.0);',
+  '  vCol = aCol * mix(aSombra, 1.0, aEmis);',
+  '  vEmis = aEmis;',
+  '  gl_Position = uProj * p;',
+  '}'
+].join('\n');
+const FS = [
+  'precision mediump float;',
+  'varying vec3 vCol;',
+  'varying float vNiebla;',
+  'varying float vEmis;',
+  'uniform vec3 uNiebla;',
+  'void main(){',
+  '  vec3 c = mix(vCol, uNiebla, vNiebla * (1.0 - vEmis));',
+  '  gl_FragColor = vec4(c, 1.0);',
+  '}'
+].join('\n');
+
+function compilar(tipo, fuente){
+  const sh = gl.createShader(tipo);
+  gl.shaderSource(sh, fuente);
+  gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) console.error('Shader:', gl.getShaderInfoLog(sh));
+  return sh;
+}
+function iniciarGL(){
+  if (!gl) return;
+  const p = gl.createProgram();
+  gl.attachShader(p, compilar(gl.VERTEX_SHADER, VS));
+  gl.attachShader(p, compilar(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) console.error('Programa:', gl.getProgramInfoLog(p));
+  R3.prog = p;
+  R3.loc = {
+    pos:    gl.getAttribLocation(p, 'aPos'),
+    col:    gl.getAttribLocation(p, 'aCol'),
+    sombra: gl.getAttribLocation(p, 'aSombra'),
+    emis:   gl.getAttribLocation(p, 'aEmis'),
+    proj:   gl.getUniformLocation(p, 'uProj'),
+    view:   gl.getUniformLocation(p, 'uView'),
+    niebla: gl.getUniformLocation(p, 'uNiebla')
+  };
+  R3.bufEst = gl.createBuffer();
+  R3.bufDin = gl.createBuffer();
+  gl.enable(gl.DEPTH_TEST);
+  gl.depthFunc(gl.LEQUAL);
+  gl.enable(gl.CULL_FACE);           // descarta caras traseras: mitad de relleno
+  gl.cullFace(gl.BACK);
+  gl.frontFace(gl.CCW);              // todas las caras se emiten en sentido antihorario vistas desde fuera
+  gl.clearColor(C3.niebla[0], C3.niebla[1], C3.niebla[2], 1);
+}
+function atributos(){
+  const s = 32, l = R3.loc;
+  gl.enableVertexAttribArray(l.pos);    gl.vertexAttribPointer(l.pos,    3, gl.FLOAT, false, s, 0);
+  gl.enableVertexAttribArray(l.col);    gl.vertexAttribPointer(l.col,    3, gl.FLOAT, false, s, 12);
+  gl.enableVertexAttribArray(l.sombra); gl.vertexAttribPointer(l.sombra, 1, gl.FLOAT, false, s, 24);
+  gl.enableVertexAttribArray(l.emis);   gl.vertexAttribPointer(l.emis,   1, gl.FLOAT, false, s, 28);
+}
+
+/* ==================== geometria estatica del nivel ======================== */
+const HOLGURA = 0.03;                 // separacion visible entre bloques
+
+function decorado(){
+  const W = G.ancho, H = G.alto;
+  caja(-8, -(H + 8), -7.4, W + 16, H + 16, 0.8, C3.pared, 0);
+  for (let x = -6; x < W + 6; x += 5) caja(x, -(H + 6), -5.4, 0.8, H + 12, 0.8, C3.pilar, 0);
+  for (let y = -2; y > -(H + 6); y -= 6)  caja(-6, y, -3.9, W + 12, 0.5, 0.5, C3.viga, 0);
+  // marco exterior del sector, para que no se vea el vacio en mapas estrechos
+  caja(-1.6, -(H + 1.6), -1.2, 1.6, H + 3.2, 2.4, C3.aceroOscuro, 0);
+  caja(W,    -(H + 1.6), -1.2, 1.6, H + 3.2, 2.4, C3.aceroOscuro, 0);
+  caja(-1.6, 0,          -1.2, W + 3.2, 1.6, 2.4, C3.aceroOscuro, 0);
+  caja(-1.6, -(H + 1.6), -1.2, W + 3.2, 1.6, 2.4, C3.aceroOscuro, 0);
+}
+
+function bloqueEstatico(c, r, t){
+  const x = c + HOLGURA, y = -(r + 1) + HOLGURA, s = 1 - 2*HOLGURA;
+  if (t === T.ACERO){
+    caja(x, y, -0.5, s, s, 1, C3.acero, 0);
+    caja(x + 0.13, y + 0.13, 0.5, s - 0.26, s - 0.26, 0.07, C3.aceroClaro, 0);   // placa frontal
+    caja(x + 0.13, y + 0.13, -0.57, s - 0.26, s - 0.26, 0.07, C3.aceroOscuro, 0);
+  } else if (t === T.DESTRUCTIBLE){
+    const n = Math.min(G.danioBloque[c + ',' + r] || 0, C3.destr.length - 1);
+    caja(x, y, -0.48, s, s, 0.96, C3.destr[n], 0);
+    caja(x, y + s/2 - 0.03, 0.44, s, 0.06, 0.1, C3.destrBorde, 0);               // junta horizontal
+    caja(x + s/2 - 0.03, y, 0.44, 0.06, s/2, 0.1, C3.destrBorde, 0);             // junta vertical
+    if (n > 0){                                                                   // cascotes sueltos
+      caja(x + 0.15, y + 0.55, 0.46, 0.22, 0.1, 0.08, C3.destrBorde, 0);
+      caja(x + 0.55, y + 0.2,  0.46, 0.1,  0.3, 0.08, C3.destrBorde, 0);
+    }
+  } else if (t === T.COMPUERTA){
+    caja(x, y, -0.5, s, s, 1, C3.compuerta, 0);
+    for (let k = 0; k < 3; k++)
+      caja(x, y + 0.13 + k*0.28, 0.5, s, 0.13, 0.06, C3.aviso, 0.35);            // bandas de peligro
+  } else if (t === T.PINCHOS){
+    caja(c + 0.02, -(r + 1), -0.5, 0.96, 0.16, 1, C3.metal, 0);
+    for (let k = 0; k < 3; k++)
+      for (let j = 0; j < 2; j++)
+        piramide(c + 0.2 + k*0.3, -0.22 + j*0.44, -(r + 1) + 0.14, -(r + 1) + 0.78, 0.11, C3.pinchos, 0);
+  }
+}
+
+function construirMalla(){
+  if (!gl) return;
+  _buf = new Float32Array(900000); _i = 0; _tr = null;
+  decorado();
+  for (let r = 0; r < G.alto; r++)
+    for (let c = 0; c < G.ancho; c++){
+      const t = G.mapa[r][c];
+      if (t === T.ACERO || t === T.DESTRUCTIBLE || t === T.COMPUERTA || t === T.PINCHOS) bloqueEstatico(c, r, t);
+    }
+  gl.bindBuffer(gl.ARRAY_BUFFER, R3.bufEst);
+  gl.bufferData(gl.ARRAY_BUFFER, _buf.subarray(0, _i), gl.STATIC_DRAW);
+  R3.nEst = _i / 8;
+  _buf = null; _i = 0;
+  G.mallaSucia = false;
+}
+
+/* ======================= modelos animados (dinamicos) ===================== */
+function mx(px){ return px / TILE; }                 // pixel -> mundo (X)
+function my(py){ return -py / TILE; }                // pixel -> mundo (Y)
+
+function modeloMecha(m){
+  if (parpadea(m)) return;
+  const x = mx(m.x), y = my(m.y + m.h), d = m.dir;   // (x,y) = esquina inferior izquierda
+  const cuerpo = m.apagado ? C3.mechaApagado : C3.mecha;
+  const osc    = m.apagado ? mezclar(C3.mechaApagado, C3.niebla, 0.45) : C3.mechaOscuro;
+  const vidrio = m.apagado ? C3.metal : C3.cabina;
+  const emi    = m.apagado ? 0 : 1;
+  const bal    = m.enSuelo ? Math.sin(m.paso / 7) * 0.09 : 0.06;
+
+  if (m.propulsando){                                        // llama del propulsor
+    const largo = 0.35 + Math.random() * 0.45;
+    caja(x + 0.28, y - largo,       -0.22, 0.24, largo, 0.44, C3.cabina, 1);
+    caja(x + 0.98, y - largo * 0.8, -0.22, 0.24, largo * 0.8, 0.44, C3.cabina, 1);
+    caja(x + 0.30, y - largo * 0.45,-0.16, 0.2,  largo * 0.45, 0.32, [1,1,1], 1);
+  }
+  caja(x + 0.16, y + 0.02 + bal, -0.28, 0.4, 0.72 - bal, 0.56, osc, 0);          // pierna izq
+  caja(x + 0.94, y + 0.02 - bal, -0.28, 0.4, 0.72 + bal, 0.56, osc, 0);          // pierna der
+  caja(x + 0.10, y + bal,        -0.34, 0.52, 0.12, 0.68, C3.metal, 0);          // pie izq
+  caja(x + 0.88, y - bal,        -0.34, 0.52, 0.12, 0.68, C3.metal, 0);          // pie der
+  caja(x + 0.11, y + 0.70,       -0.44, 1.28, 1.02, 0.88, cuerpo, 0);            // torso
+  caja(x + 0.11, y + 0.70,       -0.44, 1.28, 0.22, 0.88, osc, 0);               // cintura
+  caja(x - 0.04, y + 1.16,       -0.40, 0.34, 0.52, 0.80, osc, 0);               // hombrera izq
+  caja(x + 1.20, y + 1.16,       -0.40, 0.34, 0.52, 0.80, osc, 0);               // hombrera der
+  caja(x + 0.40, y + 1.70,       -0.34, 0.70, 0.34, 0.68, osc, 0);               // cabeza
+  caja(x + (d > 0 ? 0.56 : 0.34), y + 1.78, 0.30, 0.42, 0.16, 0.06, vidrio, emi);// visor
+  caja(x + 0.62, y + 1.14, 0.42, 0.26, 0.26, 0.06, vidrio, emi);                 // nucleo
+  const cy = y + 2 - mx(MECHA.canon) - 0.14;                                     // altura real del disparo
+  caja(d > 0 ? x + 1.16 : x - 0.62, cy, -0.16, 1.06, 0.28, 0.32, C3.metal, 0);   // canon
+  caja(d > 0 ? x + 1.90 : x - 0.68, cy + 0.04, -0.12, 0.14, 0.2, 0.24, osc, 0);  // boca
+  if (m.apagado && Math.floor(G.tiempo / 350) % 2)
+    caja(x + 0.66, y + 1.86, 0.28, 0.18, 0.12, 0.06, C3.balaEnemigo, 1);         // testigo en espera
+}
+
+function modeloPiloto(p){
+  if (!p || parpadea(p)) return;
+  const x = mx(p.x), y = my(p.y + p.h), d = p.dir;
+  const bal = p.enSuelo ? Math.sin(p.paso / 5) * 0.05 : 0.04;
+  caja(x + 0.03, y + bal,        -0.14, 0.15, 0.30 - bal, 0.28, C3.pilotoOscuro, 0);
+  caja(x + 0.25, y - bal,        -0.14, 0.15, 0.30 + bal, 0.28, C3.pilotoOscuro, 0);
+  caja(x + 0.02, y + 0.28,       -0.16, 0.40, 0.36, 0.32, C3.piloto, 0);
+  caja(x + 0.02, y + 0.28,       -0.16, 0.40, 0.09, 0.32, C3.pilotoOscuro, 0);
+  caja(x + 0.06, y + 0.62,       -0.15, 0.32, 0.28, 0.30, C3.piloto, 0);
+  caja(x + (d > 0 ? 0.18 : 0.04), y + 0.70, 0.15, 0.20, 0.11, 0.05, C3.cabina, 1);
+  caja(d > 0 ? x + 0.40 : x - 0.24, y + 0.40, -0.07, 0.28, 0.1, 0.14, C3.metal, 0);
+}
+
+function modeloEnemigo(en){
+  const x = mx(en.x), y = my(en.y + en.h), d = en.dir;
+  const bal = Math.sin(en.paso / 5) * 0.06;
+  caja(x + 0.06, y + bal,  -0.16, 0.18, 0.26 - bal, 0.32, C3.enemigoOscuro, 0);
+  caja(x + 0.58, y - bal,  -0.16, 0.18, 0.26 + bal, 0.32, C3.enemigoOscuro, 0);
+  caja(x + 0.02, y + 0.22, -0.30, 0.78, 0.38, 0.60, C3.enemigo, 0);
+  caja(x + 0.12, y + 0.58, -0.24, 0.58, 0.22, 0.48, C3.enemigo, 0);
+  caja(x + 0.22, y + 0.78, -0.18, 0.38, 0.10, 0.36, C3.enemigoOscuro, 0);
+  caja(x + (d > 0 ? 0.34 : 0.16), y + 0.38, 0.28, 0.30, 0.22, 0.06, C3.enemigoOjo, 1);
+  caja(d > 0 ? x + 0.74 : x - 0.36, y + mx(ENEMIGO.h - ENEMIGO.canon) - 0.08, -0.09, 0.42, 0.16, 0.18, C3.metal, 0);
+  if (en.vida < ENEMIGO.vidaMax){
+    const r = en.vida / ENEMIGO.vidaMax;
+    caja(x + 0.02, y + 1.02, 0.0, 0.78, 0.09, 0.09, C3.metal, 0);
+    caja(x + 0.02, y + 1.02, 0.02, 0.78 * r, 0.09, 0.09, C3.enemigoOjo, 1);
+  }
+}
+
+/* Sombra proyectada sobre el primer bloque solido que hay debajo */
+function sombraSuelo(e){
+  const c0 = Math.floor(e.x / TILE), c1 = Math.floor((e.x + e.w - 0.001) / TILE);
+  let f = Math.floor((e.y + e.h) / TILE), destino = -1;
+  for (let k = 0; k < 26 && f < G.alto; k++, f++){
+    for (let c = c0; c <= c1; c++) if (solidoEn(c, f)) { destino = f; break; }
+    if (destino >= 0) break;
+  }
+  if (destino < 0) return;
+  const caida = destino - (e.y + e.h) / TILE;
+  const enc = Math.max(0.28, 1 - caida * 0.09);
+  const w = mx(e.w) * enc, dz = 0.8 * enc;
+  caja(mx(e.x) + (mx(e.w) - w)/2, -destino + 0.02, -dz/2, w, 0.03, dz, C3.sombra, 0);
+}
+
+/* Meta e interruptor: geometria animada, fuera de la malla estatica */
+function elementosAnimados(){
+  const pulso = 0.5 + 0.5 * Math.sin(G.tiempo / 190);
+  for (let r = 0; r < G.alto; r++){
+    for (let c = 0; c < G.ancho; c++){
+      const t = G.mapa[r][c];
+      if (t === T.META){
+        const y = -(r + 1);
+        caja(c + 0.04, y + 0.04, -0.45, 0.92, 0.92, 0.9, mezclar(C3.niebla, C3.meta, 0.55), 0);
+        caja(c + 0.14, y + 0.14, -0.3 + pulso * 0.1, 0.72, 0.72, 0.78, C3.meta, 0.75 + pulso * 0.25);
+        caja(c + 0.3, y + 0.3, 0.48, 0.4, 0.4, 0.26 + pulso * 0.34, [1, 1, 1], 1);
+      } else if (t === T.INTERRUPTOR){
+        const y = -(r + 1), on = G.interruptor;
+        caja(c + 0.16, y, -0.2, 0.68, 0.34, 0.5, C3.metal, 0);
+        caja(c + 0.22, y + 0.06, 0.28, 0.56, 0.22, 0.06, on ? C3.interruptorOn : C3.interruptor, on ? 1 : 0.4);
+        caja(c + (on ? 0.56 : 0.24), y + 0.3, 0.02, 0.16, 0.44, 0.16, C3.aceroClaro, 0);
+        caja(c + (on ? 0.52 : 0.20), y + 0.68, -0.02, 0.24, 0.2, 0.24,
+             on ? C3.interruptorOn : C3.interruptor, on ? 1 : 0.5);
+      }
+    }
+  }
+}
+
+function elementosVolatiles(){
+  for (let i = 0; i < G.balas.length; i++){
+    const b = G.balas[i];
+    const col = b.dueno === 'enemigo' ? C3.balaEnemigo : C3.balaJugador;
+    const l = mx(b.w) + 0.1;
+    caja(mx(b.x), my(b.y + b.h) - 0.02, -0.09, l, 0.18, 0.18, col, 1);
+    caja(mx(b.x) - (b.vx > 0 ? l*1.3 : -l*1.6), my(b.y + b.h) + 0.03, -0.05, l*1.4, 0.08, 0.1,
+         mezclar(col, C3.niebla, 0.45), 0.8);
+  }
+  for (let i = 0; i < G.particulas.length; i++){
+    const p = G.particulas[i];
+    const s = mx(p.tam) * Math.max(0.25, Math.min(1, p.vida / 22));
+    caja(mx(p.x), my(p.y), -0.25 + (i % 5) * 0.1, s, s, s, rgbc(p.color), 0);
+  }
+}
+
+/* ============================== camara ==================================== */
+function alternarCamara(){
+  R3.modo = R3.modo === 0 ? 1 : 0;
+  avisar(R3.modo === 0 ? 'CAMARA LATERAL' : 'CAMARA EN ESCORZO', 1100);
+}
+function vistaPartida(){
+  const cx = (G.camara.x + VIEW_W/2) / TILE;
+  const cy = -(G.camara.y + VIEW_H/2) / TILE;
+  const e  = activo() || G.mecha;
+  const objetivo = R3.modo === 1 ? (e ? e.dir : 1) * 2.9 : 0;
+  R3.giro += (objetivo - R3.giro) * 0.045;
+  let sx = 0, sy = 0;
+  if (G.sacudida > 0.4){
+    sx = (Math.random() - 0.5) * G.sacudida * 0.045;
+    sy = (Math.random() - 0.5) * G.sacudida * 0.045;
+  }
+  const alto = R3.modo === 1 ? 2.3 : 1.0;
+  const dist = R3.modo === 1 ? 18.5 : 21.0;
+  return mirarA(cx + R3.giro + sx, cy + alto + sy, dist, cx + R3.giro * 0.3, cy - 0.45, 0);
+}
+
+/* ============================ pintado 3D ================================== */
+const PROY = perspectiva(50, VIEW_W / VIEW_H, 0.5, 240);
+
+function volcarDinamico(){
+  gl.bindBuffer(gl.ARRAY_BUFFER, R3.bufDin);
+  gl.bufferData(gl.ARRAY_BUFFER, R3.datosDin.subarray(0, _i), gl.DYNAMIC_DRAW);
+  atributos();
+  gl.drawArrays(gl.TRIANGLES, 0, _i / 8);
+}
+
+function escenaPartida(){
+  if (G.mallaSucia) construirMalla();
+  gl.viewport(0, 0, escena.width, escena.height);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.useProgram(R3.prog);
+  gl.uniformMatrix4fv(R3.loc.proj, false, PROY);
+  gl.uniformMatrix4fv(R3.loc.view, false, vistaPartida());
+  gl.uniform3fv(R3.loc.niebla, C3.niebla);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, R3.bufEst);
+  atributos();
+  gl.drawArrays(gl.TRIANGLES, 0, R3.nEst);
+
+  _buf = R3.datosDin; _i = 0; _tr = null;
+  elementosAnimados();
+  for (let i = 0; i < G.enemigos.length; i++) sombraSuelo(G.enemigos[i]);
+  if (G.mecha)  sombraSuelo(G.mecha);
+  if (G.piloto) sombraSuelo(G.piloto);
+  for (let i = 0; i < G.enemigos.length; i++) modeloEnemigo(G.enemigos[i]);
+  if (G.mecha)  modeloMecha(G.mecha);
+  if (G.piloto) modeloPiloto(G.piloto);
+  elementosVolatiles();
+  volcarDinamico();
+  _buf = null;
+}
+
+function escenaMenu(){
+  gl.viewport(0, 0, escena.width, escena.height);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.useProgram(R3.prog);
+  gl.uniformMatrix4fv(R3.loc.proj, false, PROY);
+  gl.uniformMatrix4fv(R3.loc.view, false, mirarA(0, 1.6, 10.5, 0, -0.35, 0));
+  gl.uniform3fv(R3.loc.niebla, C3.niebla);
+
+  _buf = R3.datosDin; _i = 0; _tr = null;
+  for (let a = -3; a <= 3; a++)                                   // plataforma
+    for (let b = -3; b <= 3; b++){
+      if (a*a + b*b > 10) continue;
+      caja(a * 0.92 - 0.44, -1.35, b * 0.92 - 0.44, 0.84, 0.22, 0.84,
+           (a + b) % 2 ? C3.acero : C3.aceroOscuro, 0);
+    }
+  for (let k = 0; k < 9; k++){                                     // pilares de fondo
+    const a = k * 0.7 - 2.8;
+    caja(a * 2.4, -1.4, -7 - (k % 3) * 2.5, 0.5, 7 + (k % 4), 0.5, C3.pilar, 0);
+  }
+  caja(-14, -1.6, -14, 28, 0.3, 20, C3.pared, 0);
+  const maqueta = { x:-24, y:-32, w:MECHA.w, h:MECHA.h, dir:1, apagado:false,
+                    propulsando:false, enSuelo:true, paso:G.tiempo / 5.5, invulnerable:0 };
+  _tr = { cx:0, cz:0, co:Math.cos(G.tiempo / 1300), si:Math.sin(G.tiempo / 1300) };
+  modeloMecha(maqueta);
+  _tr = null;
+  volcarDinamico();
+  _buf = null;
+}
+
+function sinWebGL(){
+  ctx.fillStyle = '#0a0a0f'; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  texto('ESTE NAVEGADOR NO SOPORTA WEBGL', VIEW_W/2, VIEW_H/2 - 10, 22, COLOR.hpBajo, 'center', true);
+  texto('Usa la version 2D: metal-warriors.html', VIEW_W/2, VIEW_H/2 + 24, 15, COLOR.textoTenue, 'center');
+}
+
+/* ==========================================================================
+   10b) HUD Y PANTALLAS  (capa 2D superpuesta al render 3D)
+   ========================================================================== */
+function texto(str, x, y, tam, color, alineado, negrita){
+  ctx.font = (negrita ? 'bold ' : '') + tam + 'px Consolas, Menlo, "DejaVu Sans Mono", monospace';
+  ctx.textAlign = alineado || 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = color;
+  ctx.fillText(str, x, y);
+}
+function panel(x, y, w, h, relleno, borde){
+  ctx.fillStyle = relleno; ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = borde; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+}
+function barra(x, y, w, h, ratio, color){
+  ctx.fillStyle = '#101018'; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = color;     ctx.fillRect(x + 2, y + 2, Math.max(0, (w - 4) * ratio), h - 4);
+  ctx.strokeStyle = '#565d6d'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  ctx.fillStyle = 'rgba(255,255,255,.10)';
+  for (let i = x + 6; i < x + w - 4; i += 8) ctx.fillRect(i, y + 2, 1, h - 4);
+}
+function parpadea(e){
+  return e.invulnerable > 0 && Math.floor(G.tiempo / 70) % 2 === 0;
+}
+function vineta(){
+  const vg = ctx.createRadialGradient(VIEW_W/2, VIEW_H/2, VIEW_H*0.38, VIEW_W/2, VIEW_H/2, VIEW_H*0.9);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.5)');
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+}
+function dibujarHUD(){
+  const m = G.mecha;
+  panel(12, 12, 316, 96, 'rgba(10,12,18,.82)', COLOR.aceroBorde);
+  texto('NIVEL ' + (G.nivelIdx + 1) + '/' + NIVELES.length, 24, 34, 16, COLOR.texto, 'left', true);
+  texto(NIVELES[G.nivelIdx].nombre, 118, 34, 13, COLOR.textoTenue);
+
+  const ratio = Math.max(0, m.vida / MECHA.vidaMax);
+  const colorHP = ratio > 0.6 ? COLOR.hpAlto : (ratio > 0.3 ? COLOR.hpMedio : COLOR.hpBajo);
+  texto('HP', 24, 58, 12, COLOR.textoTenue);
+  barra(62, 47, 148, 14, ratio, colorHP);
+  texto(Math.ceil(m.vida) + '', 216, 58, 12, colorHP);
+
+  const rc = m.combustible / MECHA.combustibleMax;
+  texto('FUEL', 24, 82, 12, COLOR.textoTenue);
+  barra(62, 71, 148, 12, rc, rc > 0.2 ? COLOR.combustible : COLOR.hpBajo);
+  texto(Math.ceil(m.combustible) + '', 216, 82, 12, rc > 0.2 ? COLOR.combustible : COLOR.hpBajo);
+
+  const esMecha = G.control === 'mecha';
+  const cAct = esMecha ? COLOR.mecha : COLOR.piloto;
+  panel(244, 24, 74, 72, 'rgba(0,0,0,.45)', cAct);
+  ctx.save();
+  ctx.translate(281, 60);
+  if (esMecha){
+    ctx.fillStyle = COLOR.mecha;       ctx.fillRect(-14, -14, 28, 20);
+    ctx.fillStyle = COLOR.mechaOscuro; ctx.fillRect(-14, 4, 10, 10); ctx.fillRect(4, 4, 10, 10);
+    ctx.fillStyle = COLOR.cabina;      ctx.fillRect(-6, -10, 12, 6);
+  } else {
+    ctx.fillStyle = COLOR.piloto;       ctx.fillRect(-5, -12, 10, 8); ctx.fillRect(-6, -3, 12, 11);
+    ctx.fillStyle = COLOR.pilotoOscuro; ctx.fillRect(-6, 8, 4, 6); ctx.fillRect(2, 8, 4, 6);
+    ctx.fillStyle = COLOR.cabina;       ctx.fillRect(-1, -10, 5, 4);
+  }
+  ctx.restore();
+  texto(esMecha ? 'MECHA' : 'PILOTO', 281, 90, 12, cAct, 'center', true);
+
+  let y = 122;
+  if (G.interruptor){
+    panel(12, y, 232, 26, 'rgba(31,214,122,.16)', COLOR.interruptorOn);
+    ctx.globalAlpha = 0.6 + 0.4 * Math.sin(G.tiempo / 150);
+    texto('INTERRUPTOR ACTIVADO', 26, y + 18, 14, COLOR.interruptorOn, 'left', true);
+    ctx.globalAlpha = 1;
+    y += 34;
+  }
+  if (G.mecha.apagado){
+    panel(12, y, 232, 24, 'rgba(255,209,102,.12)', COLOR.compuertaAviso);
+    texto('MECHA EN ESPERA — [E] ABORDAR', 26, y + 17, 12, COLOR.compuertaAviso);
+  }
+  if (G.aviso && G.tiempo < G.avisoHasta){
+    const w = G.aviso.length * 12 + 40;
+    panel(VIEW_W/2 - w/2, 22, w, 34, 'rgba(10,12,18,.9)', COLOR.compuertaAviso);
+    texto(G.aviso, VIEW_W/2, 45, 17, COLOR.compuertaAviso, 'center', true);
+  }
+}
+function velo(alfa){
+  ctx.fillStyle = 'rgba(5,5,10,' + alfa + ')';
+  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+}
+function tituloGrande(str, y, color){
+  ctx.save();
+  ctx.shadowColor = color; ctx.shadowBlur = 18;
+  texto(str, VIEW_W/2, y, 54, color, 'center', true);
+  ctx.restore();
+}
+function capaMenu(){
+  tituloGrande('METAL WARRIORS', 106, COLOR.mecha);
+  texto('PROTOCOLO ACERO — EDICION 3D', VIEW_W/2, 140, 19, COLOR.cabina, 'center', true);
+  panel(VIEW_W/2 - 268, 396, 536, 184, 'rgba(10,12,18,.86)', COLOR.aceroBorde);
+  const filas = [
+    'A / D  o  ←  →      DESPLAZAR',
+    'W  o  ↑             SALTAR · MANTENER = PROPULSOR',
+    'ESPACIO o CLIC IZQ  DISPARAR',
+    'E                   EYECTAR PILOTO / ABORDAR MECHA',
+    'R                   REINICIAR NIVEL',
+    'C                   CAMBIAR CAMARA (LATERAL / ESCORZO)'
+  ];
+  for (let i = 0; i < filas.length; i++) texto(filas[i], VIEW_W/2 - 244, 424 + i*26, 15, COLOR.textoTenue);
+  ctx.globalAlpha = 0.45 + 0.55 * Math.abs(Math.sin(G.tiempo / 380));
+  texto('PULSA ENTER PARA DESPLEGAR', VIEW_W/2, 616, 22, COLOR.meta, 'center', true);
+  ctx.globalAlpha = 1;
+}
+function capaTransicion(){
+  velo(0.7);
+  tituloGrande('SECTOR DESPEJADO', 280, COLOR.meta);
+  texto('NIVEL ' + (G.nivelIdx + 1) + ' — ' + NIVELES[G.nivelIdx].nombre, VIEW_W/2, 330, 20, COLOR.texto, 'center');
+  texto('DESPLEGANDO SIGUIENTE SECTOR...', VIEW_W/2, 380, 15, COLOR.textoTenue, 'center');
+}
+function capaGameOver(){
+  velo(0.74);
+  tituloGrande('MISION FALLIDA', 268, COLOR.hpBajo);
+  texto(G.motivo, VIEW_W/2, 316, 20, COLOR.texto, 'center', true);
+  if (G.cronoEstado <= 0){
+    ctx.globalAlpha = 0.45 + 0.55 * Math.abs(Math.sin(G.tiempo / 300));
+    texto('ENTER — REINTENTAR NIVEL ' + (G.nivelIdx + 1), VIEW_W/2, 388, 20, COLOR.compuertaAviso, 'center', true);
+    ctx.globalAlpha = 1;
+    texto('ESC — VOLVER AL MENU', VIEW_W/2, 424, 15, COLOR.textoTenue, 'center');
+  }
+}
+function capaVictoria(){
+  velo(0.76);
+  tituloGrande('MISION CUMPLIDA', 250, COLOR.meta);
+  texto('LOS TRES SECTORES ESTAN BAJO CONTROL.', VIEW_W/2, 300, 18, COLOR.texto, 'center');
+  texto('EL PILOTO VUELVE A CASA.', VIEW_W/2, 330, 16, COLOR.textoTenue, 'center');
+  ctx.globalAlpha = 0.45 + 0.55 * Math.abs(Math.sin(G.tiempo / 300));
+  texto('ENTER — VOLVER AL MENU', VIEW_W/2, 400, 20, COLOR.compuertaAviso, 'center', true);
+  ctx.globalAlpha = 1;
+}
+
+function dibujar(){
+  if (!R3.soportado){ sinWebGL(); return; }
+  ctx.clearRect(0, 0, VIEW_W, VIEW_H);
+  if (G.estado === 'MENU'){
+    escenaMenu();
+    vineta();
+    capaMenu();
+    return;
+  }
+  escenaPartida();
+  vineta();
+  dibujarHUD();
+  if (G.estado === 'TRANSICION') capaTransicion();
+  else if (G.estado === 'GAME_OVER') capaGameOver();
+  else if (G.estado === 'VICTORIA') capaVictoria();
+}
+
+/* ==========================================================================
+   11) MAQUINA DE ESTADOS
+   ========================================================================== */
+function actualizar(){
+  G.tiempo += MS_PASO;
+  if (G.sacudida > 0) G.sacudida *= 0.86;
+  if (Input.pulsada(K.CAMARA)) alternarCamara();
+
+  switch (G.estado){
+    case 'MENU':
+      if (Input.pulsada(K.CONFIRMAR)){ cargarNivel(0); G.estado = 'JUGANDO'; }
+      break;
+
+    case 'JUGANDO':
+      actualizarPartida();
+      break;
+
+    case 'TRANSICION':
+      actualizarParticulas();
+      G.cronoEstado -= MS_PASO;
+      if (G.cronoEstado <= 0){
+        if (G.nivelIdx + 1 < NIVELES.length){ cargarNivel(G.nivelIdx + 1); G.estado = 'JUGANDO'; }
+        else { G.estado = 'VICTORIA'; G.cronoEstado = 600; }
+      }
+      break;
+
+    case 'GAME_OVER':
+      actualizarParticulas();
+      if (G.cronoEstado > 0){ G.cronoEstado -= MS_PASO; break; }
+      if (Input.pulsada(K.CONFIRMAR) || Input.pulsada(K.REINICIAR)){ cargarNivel(G.nivelIdx); G.estado = 'JUGANDO'; }
+      else if (Input.pulsada(K.MENU)) G.estado = 'MENU';
+      break;
+
+    case 'VICTORIA':
+      actualizarParticulas();
+      if (G.cronoEstado > 0){ G.cronoEstado -= MS_PASO; break; }
+      if (Input.pulsada(K.CONFIRMAR) || Input.pulsada(K.MENU)) G.estado = 'MENU';
+      break;
+  }
+  Input.finFrame();
+}
+
+/* ==========================================================================
+   12) BUCLE PRINCIPAL  (timestep fijo a 60 Hz con acumulador)
+   ========================================================================== */
+function bucle(ahora){
+  requestAnimationFrame(bucle);
+  if (!G.ultimoT) G.ultimoT = ahora;
+  let delta = (ahora - G.ultimoT) / 1000;
+  G.ultimoT = ahora;
+  if (delta > 0.25) delta = 0.25;          // evita espirales tras un paron
+  G.acumulador += delta;
+  let ciclos = 0;
+  while (G.acumulador >= PASO && ciclos < 8){
+    actualizar();
+    G.acumulador -= PASO;
+    ciclos++;
+  }
+  dibujar();
+}
+
+/* ==========================================================================
+   13) ARRANQUE
+   ========================================================================== */
+validarNiveles();
+Input.iniciar(hud);
+iniciarGL();
+cargarNivel(0);          // deja el mundo listo para el fondo del menu
+G.estado = 'MENU';
+requestAnimationFrame(bucle);
+
+})();
+</script>
+</body>
+</html>
+
+<!--
+================================================================================
+EDICION 3D — NOTAS DE VERIFICACION
+================================================================================
+QUE CAMBIA Y QUE NO
+  La logica es exactamente la misma que la de metal-warriors.html: mismas
+  matrices, mismas constantes de fisica, mismas colisiones AABB en dos pasadas,
+  misma IA, misma maquina de estados. Lo unico reescrito es la capa de render:
+  donde antes habia un contexto 2D ahora hay un motor WebGL propio (sin
+  librerias, sin CDN, sin assets) mas un canvas 2D superpuesto para el HUD.
+
+COMO SE CONSTRUYE EL MUNDO
+  1 tile = 1 unidad de mundo.  mundoX = pixelX/TILE ; mundoY = -pixelY/TILE.
+  El plano de juego es z=0 y los bloques se extruyen de z=-0.5 a z=+0.5, de modo
+  que la fisica sigue siendo estrictamente 2D y el diseno de los tres niveles
+  (incluido el conducto de 1 bloque) se conserva intacto.
+  La malla estatica del nivel se genera una sola vez por carga a partir de la
+  matriz y se reconstruye solo cuando el mapa cambia de verdad: al danar o
+  romper un bloque tipo 2 y al abrir las compuertas con el interruptor
+  (G.mallaSucia). Meta, interruptor, entidades, disparos, particulas y sombras
+  van en un lote dinamico que se sube al GPU una vez por frame.
+
+ILUMINACION Y CAMARA
+  Sombreado plano por cara (techo 1.26, frente 1.02, laterales 0.84/0.68,
+  fondo 0.52, base 0.44), niebla por distancia hacia el color de fondo y un
+  canal de emision para visores, nucleos, disparos, meta e interruptor.
+  Cada entidad proyecta una sombra de contacto sobre el primer bloque solido
+  que encuentra debajo, encogida segun la altura de caida.
+  Dos camaras conmutables con la tecla C: escorzo (por defecto, se adelanta
+  hacia donde mira el personaje) y lateral pura. Ambas heredan el suavizado
+  lerp 0.1 y el clampeado a los limites del mapa de la version 2D.
+
+COMPROBADO EN CHROMIUM HEADLESS
+  - Las 17 pruebas funcionales de la version 2D pasan sin cambios sobre esta
+    edicion: anti-tunneling en ambos ejes, eyeccion valida y cancelada con
+    "ESPACIO INSUFICIENTE", mecha apagado como plataforma solida, abordaje,
+    rotura de bloque en 3 impactos, el mecha no cabe en el conducto (se detiene
+    en x=576), el piloto lo cruza y activa el interruptor, las 4 compuertas
+    pasan a aire, muerte por pinchos, reinicio limpio y tecla R.
+  - Cero errores y advertencias de consola en el primer frame y en juego.
+  - La malla estatica no se reconstruye por frame (G.mallaSucia queda en false).
+  - Sentido de giro de TODAS las caras verificado por producto vectorial antes
+    de activar el descarte de caras traseras; los pinchos se emiten con el mismo
+    criterio. El descarte no altera la imagen y sube el rendimiento un 25%.
+  - Nivel 1: 7.260 triangulos estaticos. Medido a 21-24 fps con rasterizado por
+    SOFTWARE (SwiftShader, sin GPU) y a 59 fps con la escena vacia, lo que
+    confirma que el limite es el relleno de pixeles del rasterizador software y
+    no la geometria: sobre una GPU real la carga es despreciable. Ademas el
+    bucle usa timestep fijo con acumulador, asi que la velocidad del juego no
+    cambia aunque baje la tasa de refresco.
+  - Si el navegador no soporta WebGL se muestra un aviso y se remite a la
+    version 2D en lugar de fallar en silencio.
+================================================================================
+-->
