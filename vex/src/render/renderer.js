@@ -16,6 +16,9 @@ import { Parallax } from './parallax.js';
 import { Camera } from './camera.js';
 import { mat3Camera } from '../core/math.js';
 import { Rng } from '../core/rng.js';
+// Namespace estático de los shaders: es el respaldo cuando no se puede
+// reimportar el módulo (paquete de un solo archivo, o protocolo file://).
+import * as SHADERS from './shaders.js';
 
 export class Renderer {
   constructor(canvas, settings) {
@@ -212,7 +215,17 @@ export class Renderer {
 
   /** Recompila todos los shaders reimportando el módulo (modo depuración). */
   async recargarShaders() {
-    const mod = await import(`./shaders.js?hr=${Date.now()}`);
+    // Con el juego servido desde src/ esto vuelve a leer el archivo del disco y
+    // la recarga es real. En el paquete de un solo archivo no hay nada que
+    // reimportar, así que se recompila desde el módulo ya cargado.
+    let mod = SHADERS;
+    let enVivo = false;
+    try {
+      mod = await import(`./shaders.js?hr=${Date.now()}`);
+      enVivo = true;
+    } catch {
+      mod = SHADERS;
+    }
     const gl = this.gl;
     const pares = [
       [this.lote.programa, mod.SPRITE_VS, mod.SPRITE_FS, null],
@@ -232,6 +245,6 @@ export class Renderer {
       try { prog.compilar(vs, fs, fb); } catch (e) { errores.push(e.message); }
     }
     // Los VAO de partículas apuntan a locations fijas, no hace falta rehacerlos.
-    return { ok: errores.length === 0, errores, version: mod.VERSION_SHADERS };
+    return { ok: errores.length === 0, errores, version: mod.VERSION_SHADERS, enVivo };
   }
 }

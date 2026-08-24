@@ -14,7 +14,20 @@ el audio se generan por código en tiempo de ejecución.
 
 ## Cómo jugar
 
-No hay que instalar ni compilar nada. Desde la raíz del repositorio:
+### La forma fácil: un solo archivo
+
+Descarga **[`vex.html`](vex.html)** y ábrelo con doble clic. Ya está: el juego
+entero —código, arte y sonido— cabe en ese archivo, no necesita servidor ni
+conexión.
+
+> **Cuidado:** `index.html` **no** funciona por sí solo. Carga sus 45 módulos
+> desde `src/`, y además el navegador bloquea los módulos ES cuando se abre un
+> archivo con doble clic (protocolo `file://`). Si lo intentas, la propia página
+> te lo explicará y te mandará aquí.
+
+### La forma normal: servir la carpeta
+
+Para tocar el código, hay que servirlo por HTTP. Desde la raíz del repositorio:
 
 ```bash
 python3 -m http.server 8000 --directory vex
@@ -27,6 +40,9 @@ O sirviendo todo el repositorio:
 python3 -m http.server 8000
 # abre http://localhost:8000/vex/
 ```
+
+Así los módulos se cargan sueltos, sin ningún paso de compilación: lo que edites
+en `src/` se ve al recargar.
 
 Hace falta un navegador con **WebGL2**: Chrome, Edge, Firefox o Safari 15+.
 El audio arranca con la primera tecla o el primer clic (política de autoplay).
@@ -95,7 +111,9 @@ partículas al hacerlo), pinchos, láseres telegrafiados y torretas.
 
 ```
 vex/
-├── index.html               página única, sin build
+├── index.html               página principal, carga los módulos de src/
+├── vex.html                 el juego entero en un archivo (doble clic)
+├── herramientas/            generador de vex.html
 ├── pruebas/                 auto-pruebas ejecutables en el navegador
 └── src/
     ├── core/                math · rng · ecs · events · input · loop · replay · settings
@@ -220,6 +238,29 @@ Verificado en Chromium 1194 con rasterización por software (SwiftShader), a
 > de 8 ms. El diseño está pensado para el resto (una draw call por capa, atlas
 > único, partículas íntegramente en GPU, seis luces con sombra como máximo), pero
 > la cifra de fps en una GPU concreta habría que medirla en esa GPU.
+
+---
+
+## Sobre el archivo único
+
+`vex.html` lo genera `herramientas/empaquetar.mjs`, que ordena los 45 módulos por
+dependencias, sustituye cada `import` por una llamada a un registro mínimo y los
+concatena. No minifica ni transpila: el código de dentro es el mismo que el de
+`src/`, sólo reordenado.
+
+```bash
+node herramientas/empaquetar.mjs   # regenera vex.html desde src/
+```
+
+**Esto no es un paso de compilación del juego.** El juego corre sin él: sirve la
+carpeta y listo. El empaquetado existe únicamente porque `file://` bloquea los
+módulos ES por CORS, así que es la única manera de repartir el juego como un
+archivo suelto que se abra con doble clic. Si tocas `src/`, acuérdate de
+regenerarlo.
+
+Dentro del paquete hay una diferencia, y sólo una: `F2` recompila los shaders
+desde el módulo ya cargado en vez de releerlo del disco, así que no hay recarga
+en vivo. El propio aviso en pantalla lo dice cuando ocurre.
 
 ---
 

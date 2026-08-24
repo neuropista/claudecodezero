@@ -41,6 +41,32 @@
     <h1>VEX</h1>
     <p>Generando arte, sonido y niveles por codigo...</p>
   </div>
+  <script>
+    // Si los modulos no llegan a cargar, la pantalla de carga se quedaria fija
+    // para siempre. Este vigia explica el motivo real, que casi siempre es uno
+    // de dos: falta la carpeta src/ junto al HTML, o se ha abierto el archivo
+    // con doble clic y file:// bloquea los modulos ES por CORS.
+    setTimeout(function () {
+      if (window.JUEGO) return;
+      var aviso = document.getElementById('aviso');
+      if (!aviso || aviso.classList.contains('error')) return;
+      var suelto = location.protocol === 'file:';
+      aviso.classList.remove('cargando');
+      aviso.classList.add('error');
+      aviso.innerHTML =
+        '<h1>No se pudieron cargar los modulos</h1>' +
+        (suelto
+          ? '<p>Has abierto <code>index.html</code> directamente desde el disco. ' +
+            'El navegador bloquea los modulos ES en <code>file://</code>, y ademas ' +
+            'este archivo necesita la carpeta <code>src/</code> a su lado.</p>' +
+            '<p><strong>Usa <code>vex.html</code></strong>: es el juego entero en un ' +
+            'unico archivo y funciona con doble clic.</p>'
+          : '<p>Falta la carpeta <code>src/</code> junto a <code>index.html</code>, ' +
+            'o el servidor no la esta sirviendo.</p>') +
+        '<p>Tambien puedes servir la carpeta completa:<br>' +
+        '<code>python3 -m http.server 8000 --directory vex</code></p>';
+    }, 5000);
+  </script>
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>

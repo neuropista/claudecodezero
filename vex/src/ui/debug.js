@@ -25,7 +25,9 @@ export class Depuracion {
         e.preventDefault();
         this.aviso('Recompilando shaders...');
         const res = await this.R.recargarShaders();
-        this.aviso(res.ok ? `Shaders recargados (v${res.version})` : `Error: ${res.errores[0].slice(0, 90)}`);
+        this.aviso(res.ok
+          ? `Shaders recompilados (v${res.version})${res.enVivo ? '' : ' — sin recarga en vivo en el paquete de un solo archivo'}`
+          : `Error: ${res.errores[0].slice(0, 90)}`);
       } else if (e.code === 'F3') {
         e.preventDefault();
         this.juego.reproducirRepeticion();

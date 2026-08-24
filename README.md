@@ -14,7 +14,7 @@ Basado en el guion docente *"Claude Code sin ser programador"* (Neuropista · An
 |---------|---------|
 | `index.html` | **2D cenital** — estilo RPG clásico de los 90, funciona en cualquier equipo |
 | `index3d.html` | **3D en primera persona** — dungeon crawler con **niveles de dificultad** (requiere WebGL) |
-| `vex/index.html` | **VEX: Colapso Neuronal** — roguelite de acción en WebGL2, con todo el arte y el audio generados por código (requiere WebGL2) |
+| `vex/vex.html` | **VEX: Colapso Neuronal** — roguelite de acción en WebGL2 con todo el arte y el audio generados por código. **Un solo archivo: se abre con doble clic** |
 
 ```
 git clone https://github.com/neuropista/claudecodezero.git
@@ -28,6 +28,8 @@ python3 -m http.server 8000
 # 3D:  http://localhost:8000/index3d.html
 # VEX: http://localhost:8000/vex/
 ```
+
+*(VEX también se puede jugar sin servidor: descarga `vex/vex.html` y ábrelo con doble clic.)*
 
 ## 📖 La historia
 
@@ -126,6 +128,8 @@ Además de las dos ediciones docentes, el repositorio incluye **[VEX: Colapso Ne
 Vex es una consciencia que corre dentro de una red neuronal que se apaga: cuatro biomas, 25 sectores generados por procedimiento, un jefe de tres fases por bioma y un arma de seis módulos que se combinan entre sí.
 
 Está construido con las mismas reglas llevadas al extremo: **ni motores, ni librerías, ni un solo archivo de imagen o de audio**. Renderizador 2D propio en WebGL2 con batching por instancias, iluminación dinámica con sombras por raycast, partículas en GPU con transform feedback y cadena de post-proceso; audio íntegramente sintetizado con música adaptativa por capas; y una simulación determinista de paso fijo que graba y reproduce partidas enteras desde la semilla.
+
+Se puede jugar de dos maneras: descargando **`vex/vex.html`** y abriéndolo con doble clic —el juego entero cabe en ese archivo—, o sirviendo la carpeta para trabajar sobre el código sin ningún paso de compilación:
 
 ```
 python3 -m http.server 8000 --directory vex   → http://localhost:8000
