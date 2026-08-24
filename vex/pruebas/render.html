@@ -1,0 +1,88 @@
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>test</title>
+<style>html,body{margin:0;background:#000;overflow:hidden}canvas{display:block;width:100vw;height:100vh}</style>
+</head><body><canvas id="c"></canvas>
+<script type="module">
+import { Renderer } from '../src/render/renderer.js';
+import { Settings } from '../src/core/settings.js';
+import { segmentosDesdeGrid } from '../src/render/lighting.js';
+window.errores = [];
+window.onerror = (m,s,l,c,e)=>{window.errores.push(String(e&&e.stack||m));};
+try {
+  const canvas = document.getElementById('c');
+  canvas.width = 1280; canvas.height = 720;
+  const settings = new Settings();
+  const r = new Renderer(canvas, settings);
+  window.R = r;
+  window.info = {
+    sprites: r.atlas.pendientes.length,
+    ocupacion: r.atlas.ocupacion().toFixed(3),
+    alturaUsada: r.atlas.alturaUsada,
+    hdr: r.post.hdr,
+  };
+  // Geometría de prueba: un suelo y dos columnas.
+  const W=40,H=24, solid=new Uint8Array(W*H);
+  const S=(x,y)=> (x<0||y<0||x>=W||y>=H)?0:solid[y*W+x];
+  for(let x=0;x<W;x++){solid[(H-3)*W+x]=1;solid[(H-2)*W+x]=1;solid[(H-1)*W+x]=1;}
+  for(let y=H-9;y<H-3;y++){solid[y*W+10]=1;solid[y*W+26]=1;}
+  const g = segmentosDesdeGrid((x,y)=>S(x,y)===1, W,H,32,0,0);
+  window.info.segmentos = g.n;
+  r.luz.setGeometria(g.segs,g.n,0,0,W*32,H*32);
+  r.particulas.setColision(solid, W, H, 0,0,W*32,H*32);
+  r.setBioma(0);
+  r.camara.fijar(W*16, H*16);
+  r.camara.zoom = 1;
+
+  const idxIdle = r.idx('vex.idle.0');
+  const idxTile = r.idx('tile.0.cuerpo.0');
+  const idxTapa = r.idx('tile.0.tapa.0');
+  const idxDron = r.idx('enem.dron.0');
+  let frames=0, tSum=0;
+  function frame(){
+    const t0=performance.now();
+    const dt=1/60;
+    r.camara.actualizar(dt, W*16+Math.sin(frames*0.01)*200, H*16, 0,0);
+    r.empezarFrame(1, dt);
+    // tiles
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+      if(!solid[y*W+x])continue;
+      const arriba = S(x,y-1)===0;
+      r.lote.push(arriba?idxTapa:idxTile, x*32+16, y*32+16, 32,32,0, 1,1,1,1, 0,0);
+    }
+    // muchas entidades para medir
+    for(let i=0;i<420;i++){
+      const a=frames*0.01+i*0.5;
+      r.lote.push(idxDron, 200+ (i%30)*36 + Math.sin(a)*20, 120+ Math.floor(i/30)*40 + Math.cos(a)*20, 44,44, 0, 1,1,1,1, 0.3, 0);
+    }
+    r.lote.push(idxIdle, W*16, H*32-96-29, 52,58,0, 1,1,1,1, 0,0);
+    // luces
+    r.luz.add(W*16, H*32-140, 420, 0.35,0.85,1.0, 1.6, true);
+    r.luz.add(320, H*32-160, 300, 1.0,0.4,0.7, 1.2, true);
+    r.luz.add(980, H*32-200, 340, 1.0,0.7,0.3, 1.1, true);
+    for(let i=0;i<10;i++) r.luz.add(120+i*120, 200+Math.sin(frames*0.02+i)*40, 180, 0.5,0.6,1.0, 0.7, false);
+    r.finMundo(dt);
+    // partículas
+    r.particulas.chispas(W*16, H*32-120, 40, -1.57, 2.2, 420, 1,0.8,0.3);
+    r.particulas.humo(400, H*32-120, 12, 20, 0.6,0.65,0.8, 0.4);
+    r.particulas.escombros(800, H*32-140, 20, 300, 0.7,0.8,1);
+    r.particulas.actualizar(dt);
+    r.empezarEmisivo();
+    r.finEmisivo();
+    r.empezarUI();
+    r.texto('VEX — COLAPSO NEURONAL', 40, 50, 0.9, 0.85,0.95,1,1,0);
+    r.texto('¡Atención! Núcleo dañado 42% · ¿Continuar?', 40, 100, 0.55, 1,0.7,0.4,1,0);
+    r.texto('SEGMENTOS: '+g.n, 40, 145, 0.45, 0.6,1,0.8,1,0);
+    r.finUI();
+    r.presentar(dt);
+    tSum += performance.now()-t0;
+    frames++;
+    if(frames<120) requestAnimationFrame(frame);
+    else {
+      window.info.msPorFrame = (tSum/frames).toFixed(3);
+      window.info.stats = JSON.parse(JSON.stringify(r.estadisticas));
+      window.info.glError = r.gl.getError();
+      window.listo = true;
+    }
+  }
+  requestAnimationFrame(frame);
+} catch(e){ window.errores.push(String(e.stack||e)); window.listo=true; }
+</script></body></html>

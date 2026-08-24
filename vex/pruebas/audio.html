@@ -1,0 +1,120 @@
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>audio</title></head><body>
+<script type="module">
+import { Buses } from '../src/audio/buses.js';
+import { Sfx } from '../src/audio/sfx.js';
+import { Musica, TENSION, TEMAS } from '../src/audio/music.js';
+import { impulsoReverb, bufferRuido, voz, midiAFreq } from '../src/audio/synth.js';
+window.errores = [];
+window.onerror = (m,s,l,c,e)=>window.errores.push(String(e&&e.stack||m));
+
+const SR = 44100;
+function analiza(buf) {
+  const n = buf.length;
+  let sum = 0, pico = 0, cruces = 0, prev = 0;
+  const d = buf.getChannelData(0);
+  const d2 = buf.numberOfChannels > 1 ? buf.getChannelData(1) : d;
+  let difEstereo = 0;
+  for (let i = 0; i < n; i++) {
+    const v = d[i];
+    sum += v * v;
+    if (Math.abs(v) > pico) pico = Math.abs(v);
+    if ((v >= 0) !== (prev >= 0)) cruces++;
+    prev = v;
+    difEstereo += Math.abs(v - d2[i]);
+  }
+  return {
+    rms: +Math.sqrt(sum / n).toFixed(5),
+    pico: +pico.toFixed(4),
+    hzAprox: Math.round((cruces / 2) / (n / SR)),
+    estereo: +(difEstereo / n).toFixed(5),
+    clipping: pico > 1.001,
+  };
+}
+
+async function render(dur, fn) {
+  const ctx = new OfflineAudioContext(2, Math.floor(SR * dur), SR);
+  const buses = new Buses(ctx);
+  const sfx = new Sfx(ctx, buses);
+  await fn(ctx, buses, sfx);
+  const buf = await ctx.startRendering();
+  return analiza(buf);
+}
+
+try {
+  const r = {};
+  // Un efecto por prueba, con silencio suficiente para que decaiga.
+  const efectos = ['salto','dobleSalto','dash','disparo','impacto','danio','muerteEnemigo','explosion','parry','gancho','recogida','modulo','puerta','laser','cura','jefeFase','muerteJugador','victoria'];
+  for (const nombre of efectos) {
+    r[nombre] = await render(2.2, (ctx, buses, sfx) => {
+      if (nombre === 'aterrizaje') sfx.aterrizaje(1, 0);
+      else sfx[nombre](0.4);
+    });
+  }
+  r.aterrizaje = await render(2.2, (ctx,b,s)=>s.aterrizaje(1.2, -0.3));
+
+  // Variacion: el mismo efecto dos veces NO debe ser identico.
+  const a = await render(1.2, (c,b,s)=>s.disparo(0,0,0));
+  const bb = await render(1.2, (c,b,s)=>s.disparo(0,0,0));
+  r.__variacionDisparo = { rmsA: a.rms, rmsB: bb.rms, distintos: a.rms !== bb.rms || a.hzAprox !== bb.hzAprox };
+
+  // Panorama estereo.
+  const izq = await render(1.2, (c,b,s)=>s.impacto(1, -0.85));
+  r.__panEstereo = { difIzq: izq.estereo };
+
+  // Reverb: cola audible tras el impulso.
+  {
+    const ctx = new OfflineAudioContext(2, SR*3, SR);
+    const buses = new Buses(ctx);
+    const src = ctx.createBufferSource();
+    const b1 = ctx.createBuffer(1, 128, SR); b1.getChannelData(0)[0] = 1;
+    src.buffer = b1;
+    buses.envioReverb.gain.value = 1;
+    src.connect(buses.envioReverb);
+    src.start(0);
+    const buf = await ctx.startRendering();
+    const d = buf.getChannelData(0);
+    let energiaTardia = 0;
+    for (let i = SR*0.4; i < SR*1.5; i++) energiaTardia += d[i]*d[i];
+    r.__reverb = { colaRms: +Math.sqrt(energiaTardia/(SR*1.1)).toFixed(6), hayCola: energiaTardia > 1e-9 };
+  }
+
+  // Musica: cuatro compases de cada bioma en cada nivel de tension.
+  r.__musica = {};
+  for (let bioma = 0; bioma < 4; bioma++) {
+    const ctx = new OfflineAudioContext(2, SR*6, SR);
+    const buses = new Buses(ctx);
+    const mus = new Musica(ctx, buses);
+    mus.bioma = bioma; mus.tema = TEMAS[bioma];
+    mus.tension = TENSION.JEFE;
+    for (let c = 0; c < 4; c++) mus._aplicarCambios(c * mus.duracionPaso * 16);
+    let t = 0;
+    mus.compasActual = 0;
+    for (let paso = 0; paso < 64; paso++) {
+      if (paso % 16 === 0) { mus.compasActual++; mus._aplicarCambios(t); }
+      mus._emitirPaso(paso % 16, t);
+      t += mus.duracionPaso;
+    }
+    const buf = await ctx.startRendering();
+    r.__musica['bioma'+bioma] = { bpm: mus.tema.bpm, ...analiza(buf) };
+  }
+
+  // Ducking: la ganancia de musica baja tras un golpe.
+  {
+    const ctx = new OfflineAudioContext(2, SR*2, SR);
+    const buses = new Buses(ctx);
+    const osc = ctx.createOscillator(); osc.frequency.value = 220;
+    const g = ctx.createGain(); g.gain.value = 0.5;
+    osc.connect(g).connect(buses.entradaMusica); osc.start(0); osc.stop(2);
+    buses.duck(0.7, 0.4);
+    const buf = await ctx.startRendering();
+    const d = buf.getChannelData(0);
+    const rms = (a,b)=>{let s=0;for(let i=a;i<b;i++)s+=d[i]*d[i];return Math.sqrt(s/(b-a));};
+    const antes = rms(SR*1.2, SR*1.9);
+    const durante = rms(SR*0.02, SR*0.06);
+    r.__ducking = { durante:+durante.toFixed(4), recuperado:+antes.toFixed(4), agacha: durante < antes * 0.75 };
+  }
+
+  window.info = r;
+  window.listo = true;
+} catch(e) { window.errores.push(String(e.stack||e)); window.listo = true; }
+</script></body></html>

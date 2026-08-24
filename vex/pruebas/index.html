@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VEX — Auto-pruebas</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><rect width=%2264%22 height=%2264%22 fill=%22%23050a14%22/><path d=%22M14 16 L32 46 L50 16%22 stroke=%22%234fe3ff%22 stroke-width=%228%22 fill=%22none%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/></svg>">
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 2rem 1.5rem; background: #04060c; color: #cfe9f5;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 14px; line-height: 1.6;
+  }
+  h1 { color: #6fe0ff; letter-spacing: .12em; font-size: 1.4rem; margin: 0 0 .3rem; }
+  p.sub { opacity: .65; margin: 0 0 1.5rem; }
+  #salida { max-width: 100ch; }
+  .grupo { margin: 1.4rem 0 .4rem; color: #9fe8ff; border-bottom: 1px solid #16324a; padding-bottom: .25rem; }
+  .fila { display: grid; grid-template-columns: 3.2rem 1fr auto; gap: .75rem; padding: .1rem 0; }
+  .ok { color: #5effc0; }
+  .mal { color: #ff6f92; }
+  .info { color: #7fa8c0; }
+  .detalle { opacity: .6; font-size: 12px; }
+  #resumen { margin-top: 2rem; padding: 1rem; border: 1px solid #16324a; border-radius: 6px; }
+  #resumen.todoOk { border-color: #2c7a5c; }
+  #resumen.hayFallos { border-color: #7a2c3c; }
+  a { color: #6fe0ff; }
+  canvas { display: none; }
+</style>
+</head>
+<body>
+<h1>VEX · AUTO-PRUEBAS</h1>
+<p class="sub">
+  Comprueba el PRNG, el determinismo de la simulación, la repetición, el atlas
+  procedural, la síntesis de audio y el presupuesto de CPU. Todo se ejecuta en
+  este navegador. &nbsp;·&nbsp;
+  <a href="../index.html">volver al juego</a> &nbsp;·&nbsp;
+  <a href="render.html">banco de render</a> &nbsp;·&nbsp;
+  <a href="audio.html">banco de audio</a>
+</p>
+<div id="salida"></div>
+<div id="resumen">Ejecutando…</div>
+<canvas id="lienzo" width="960" height="540"></canvas>
+
+<script type="module">
+import { Rng } from '../src/core/rng.js';
+import { EntityStore } from '../src/core/ecs.js';
+import { Settings } from '../src/core/settings.js';
+import { Renderer } from '../src/render/renderer.js';
+import { Mundo } from '../src/game/world.js';
+import { Dibujante } from '../src/game/draw.js';
+import { EventBus } from '../src/core/events.js';
+import { Replay, INTERVALO_CHECKSUM } from '../src/core/replay.js';
+import { Input } from '../src/core/input.js';
+import { generarSala, TIPO_SALA } from '../src/game/level.js';
+import { Buses } from '../src/audio/buses.js';
+import { Sfx } from '../src/audio/sfx.js';
+import { Musica, TENSION, TEMAS } from '../src/audio/music.js';
+import { disparar, MOD } from '../src/game/weapons.js';
+import { TIPO } from '../src/game/components.js';
+import { crearEnemigo } from '../src/game/enemies.js';
+
+const salida = document.getElementById('salida');
+let pasadas = 0, fallidas = 0;
+
+function grupo(nombre) {
+  const d = document.createElement('div');
+  d.className = 'grupo';
+  d.textContent = nombre;
+  salida.appendChild(d);
+}
+function comprobar(nombre, condicion, detalle = '') {
+  const ok = !!condicion;
+  ok ? pasadas++ : fallidas++;
+  const f = document.createElement('div');
+  f.className = 'fila';
+  f.innerHTML = `<span class="${ok ? 'ok' : 'mal'}">${ok ? 'OK' : 'FALLO'}</span>` +
+                `<span>${nombre}</span><span class="detalle">${detalle}</span>`;
+  salida.appendChild(f);
+  return ok;
+}
+function dato(nombre, valor) {
+  const f = document.createElement('div');
+  f.className = 'fila';
+  f.innerHTML = `<span class="info">·</span><span>${nombre}</span><span class="detalle">${valor}</span>`;
+  salida.appendChild(f);
+}
+const esperar = () => new Promise((r) => setTimeout(r, 0));
+
+// ------------------------------------------------------------------ PRNG ---
+grupo('1 · Generador xorshift128+');
+{
+  const a = new Rng('vex'), b = new Rng('vex'), c = new Rng('otra');
+  let iguales = true, fuera = 0, suma = 0;
+  const N = 200000;
+  for (let i = 0; i < N; i++) {
+    const x = a.float(), y = b.float();
+    if (x !== y) iguales = false;
+    if (x < 0 || x >= 1) fuera++;
+    suma += x;
+  }
+  comprobar('misma semilla produce la misma secuencia', iguales, `${N} muestras`);
+  comprobar('todas las muestras en [0,1)', fuera === 0);
+  comprobar('media cercana a 0,5', Math.abs(suma / N - 0.5) < 0.005, (suma / N).toFixed(5));
+  comprobar('semillas distintas divergen', c.float() !== new Rng('vex').float());
+
+  const r = new Rng(7), bins = new Array(16).fill(0), M = 160000;
+  for (let i = 0; i < M; i++) bins[r.int(16)]++;
+  const esp = M / 16;
+  let chi = 0;
+  for (const v of bins) chi += (v - esp) ** 2 / esp;
+  comprobar('reparto uniforme (chi² < 30,6 con 15 g.l.)', chi < 30.6, `chi² = ${chi.toFixed(2)}`);
+
+  const g = new Rng(3);
+  const estado = g.saveState();
+  const antes = [g.float(), g.float(), g.float()];
+  g.loadState(estado);
+  const despues = [g.float(), g.float(), g.float()];
+  comprobar('guardar/restaurar estado es exacto', antes.every((v, i) => v === despues[i]));
+}
+
+// ------------------------------------------------------------------- ECS ---
+grupo('2 · Almacén de entidades (SoA)');
+{
+  const s = new EntityStore(8, { x: 'f32', hp: 'i16', uv: ['f32', 4] });
+  const ids = [];
+  for (let i = 0; i < 8; i++) ids.push(s.create(1));
+  comprobar('se llena hasta la capacidad', s.count === 8);
+  comprobar('rechaza reservas de más', s.create() === -1);
+  const h = s.handle(ids[5]);
+  comprobar('el handle resuelve mientras vive', s.resolve(h) === ids[5]);
+  s.kill(ids[5]); s.flush();
+  comprobar('el handle caduca al morir', s.resolve(h) === -1);
+  comprobar('la lista densa se compacta', s.count === 7);
+  comprobar('los componentes con aridad reservan bien', s.uv.length === 32);
+  s.clear();
+  comprobar('clear deja los componentes a cero', s.x.every((v) => v === 0) && s.count === 0);
+}
+
+// -------------------------------------------------------------- Niveles ---
+grupo('3 · Generación procedural de salas');
+{
+  let iguales = true, sinSpawn = 0, luzEnRoca = 0, salas = 0;
+  for (let i = 0; i < 30; i++) {
+    const tipo = i % 6;
+    const a = generarSala(new Rng('sala' + i), { tipo, bioma: i % 4, indice: i, dificultad: 3 });
+    const b = generarSala(new Rng('sala' + i), { tipo, bioma: i % 4, indice: i, dificultad: 3 });
+    if (a.tiles.length !== b.tiles.length) iguales = false;
+    for (let k = 0; k < a.tiles.length; k++) if (a.tiles[k] !== b.tiles[k]) { iguales = false; break; }
+    if (a.spawns.length === 0) sinSpawn++;
+    for (const p of a.props) {
+      if (p.tipo !== 'luz') continue;
+      if (a.get(Math.floor(p.x / 32), Math.floor(p.y / 32)) !== 0) luzEnRoca++;
+    }
+    salas++;
+  }
+  comprobar('la misma semilla genera la misma sala', iguales, `${salas} salas`);
+  comprobar('toda sala tiene puntos de aparición', sinSpawn === 0);
+  comprobar('ninguna luz queda dentro de la roca', luzEnRoca === 0);
+}
+
+// ------------------------------------------------------- Motor y mundo ----
+grupo('4 · Arranque del motor');
+const lienzo = document.getElementById('lienzo');
+let R, mundo, dibujante, input, eventos;
+try {
+  const settings = new Settings();
+  R = new Renderer(lienzo, settings);
+  eventos = new EventBus();
+  mundo = new Mundo(R, eventos);
+  dibujante = new Dibujante(mundo);
+  input = new Input(lienzo);
+  comprobar('contexto WebGL2 y renderizador creados', true);
+  comprobar('atlas procedural construido', R.atlas.construido, `${R.atlas.pendientes.length} sprites, ${(R.atlas.ocupacion() * 100).toFixed(1)} % del atlas`);
+  comprobar('fuente de trazos registrada', R.fuente.porCodigo.size > 80, `${R.fuente.porCodigo.size} códigos`);
+  comprobar('sistema de partículas en GPU listo', R.particulas.max >= 32768, `${R.particulas.max} partículas`);
+} catch (e) {
+  comprobar('contexto WebGL2 y renderizador creados', false, String(e.message));
+}
+
+await esperar();
+
+// -------------------------------------------------------- Determinismo ----
+grupo('5 · Determinismo de la simulación');
+let msPorTick = 0;
+if (mundo) {
+  const entradas = (n, sem) => {
+    let s = sem >>> 0;
+    const r = () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+    const out = [];
+    let btn = 0;
+    for (let t = 0; t < n; t++) {
+      if (t % 7 === 0) {
+        btn = 0;
+        if (r() < 0.55) btn |= 1 << 1;
+        if (r() < 0.15) btn |= 1 << 0;
+        if (r() < 0.22) btn |= 1 << 4;
+        if (r() < 0.10) btn |= 1 << 5;
+        if (r() < 0.45) btn |= 1 << 6;
+        if (r() < 0.07) btn |= 1 << 7;
+        if (r() < 0.05) btn |= 1 << 8;
+      }
+      out.push([btn, (r() * 4096) | 0]);
+    }
+    return out;
+  };
+  const correr = (semilla, ent) => {
+    mundo.nuevaPartida(semilla);
+    for (const m of [1, 2, 4, 8, 16, 32]) mundo.arma.desbloquear(m);
+    const f = input.frame;
+    f.buttons = 0; f.prev = 0;
+    const cks = [];
+    for (let t = 0; t < ent.length; t++) {
+      input.aplicarGrabado(f, ent[t][0], ent[t][1]);
+      mundo.actualizar(1 / 60, f);
+      eventos.clear();
+      if (t % 25 === 0) cks.push(mundo.checksum());
+    }
+    return cks;
+  };
+
+  const N = 1800;
+  const ent = entradas(N, 0xA11CE);
+  const t0 = performance.now();
+  const a = correr('AUTOTEST', ent);
+  msPorTick = (performance.now() - t0) / N;
+  const b = correr('AUTOTEST', ent);
+  const c = correr('OTRA', ent);
+
+  let idx = -1;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) { idx = i * 25; break; }
+  comprobar('misma semilla + mismas entradas = mismo estado', idx === -1,
+    idx === -1 ? `${N} ticks, ${a.length} firmas` : `primer desajuste en el tick ${idx}`);
+  comprobar('otra semilla produce otra partida', JSON.stringify(a) !== JSON.stringify(c));
+  dato('coste de simulación', `${msPorTick.toFixed(4)} ms por tick`);
+}
+
+await esperar();
+
+// ---------------------------------------------------------- Repetición ----
+grupo('6 · Grabación y repetición');
+if (mundo) {
+  const replay = new Replay();
+  const f = input.frame;
+  mundo.nuevaPartida('REPETICION');
+  replay.iniciarGrabacion(mundo.semilla);
+  let s = 0xBEEF;
+  const r = () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+  f.buttons = 0; f.prev = 0;
+  let btn = 0;
+  const TICKS = 900;
+  for (let t = 0; t < TICKS; t++) {
+    if (t % 7 === 0) {
+      btn = (r() < 0.6 ? 2 : 0) | (r() < 0.25 ? 16 : 0) | (r() < 0.5 ? 64 : 0) | (r() < 0.12 ? 32 : 0);
+    }
+    input.aplicarGrabado(f, btn, (r() * 4096) | 0);
+    replay.grabar(t, f.buttons, f.aimQ);
+    mundo.actualizar(1 / 60, f);
+    eventos.clear();
+    if (t % INTERVALO_CHECKSUM === 0) replay.anotarChecksum(t, mundo.checksum());
+  }
+  const grabados = replay.length;
+
+  mundo.nuevaPartida(replay.seed);
+  replay.iniciarReproduccion();
+  f.buttons = 0; f.prev = 0;
+  for (let t = 0; t < grabados; t++) {
+    input.aplicarGrabado(f, replay.buttons[t], replay.aim[t]);
+    mundo.actualizar(1 / 60, f);
+    eventos.clear();
+    if (t % INTERVALO_CHECKSUM === 0) replay.anotarChecksum(t, mundo.checksum());
+  }
+  comprobar('la repetición reproduce la partida bit a bit', replay.desajustes === 0,
+    replay.desajustes === 0 ? `${grabados} ticks verificados` : `${replay.desajustes} desajustes, el primero en el tick ${replay.primerDesajuste}`);
+
+  const exportado = replay.exportar();
+  const otro = new Replay();
+  comprobar('la repetición se exporta e importa', otro.importar(exportado) && otro.length === grabados);
+}
+
+await esperar();
+
+// ------------------------------------------------------------ Armas ------
+grupo('7 · Módulos de arma y sus combinaciones');
+if (mundo) {
+  const prueba = (combo) => {
+    mundo.nuevaPartida('ARMAS');
+    mundo.ent.clear();
+    mundo.jugador.crear(600, 400);
+    mundo.arma.equipados = combo.slice();
+    mundo.arma.orbitales = 0;
+    mundo.arma.enfriamiento = 0;
+    mundo.arma.calor = 0;
+    mundo.arma.sobrecalentada = false;
+    disparar(mundo, mundo.jugador, mundo.arma, 0, mundo.rng);
+    const S = mundo.ent;
+    let n = 0, rebotes = 0, perfora = 1, orbitales = 0;
+    for (let i = 0; i < S.count; i++) {
+      const e = S.dense[i];
+      if (S.tipo[e] !== TIPO.BALA_JUGADOR && S.tipo[e] !== TIPO.ORBITAL) continue;
+      n++;
+      rebotes = Math.max(rebotes, S.c[e]);
+      perfora = Math.max(perfora, S.golpes[e]);
+      if (S.tipo[e] === TIPO.ORBITAL) orbitales++;
+    }
+    return { n, rebotes, perfora, orbitales };
+  };
+  const base = prueba([]);
+  comprobar('el disparo base crea un proyectil', base.n === 1 && base.perfora === 1 && base.rebotes === 0);
+  const perf = prueba([MOD.PERFORANTE]);
+  comprobar('Perforante atraviesa varios objetivos', perf.perfora === 3, `${perf.perfora} impactos`);
+  const reb = prueba([MOD.REBOTE]);
+  comprobar('Rebote acumula rebotes', reb.rebotes >= 4, `${reb.rebotes} rebotes`);
+  const esc = prueba([MOD.ESCOPETA]);
+  comprobar('Escopeta dispara un abanico', esc.n === 5, `${esc.n} fragmentos`);
+  const orb = prueba([MOD.ORBITAL]);
+  comprobar('Orbital deja el proyectil en órbita', orb.orbitales === 1);
+  const mix1 = prueba([MOD.PERFORANTE, MOD.REBOTE]);
+  comprobar('Perforante + Rebote suma ambos efectos', mix1.perfora === 3 && mix1.rebotes >= 5,
+    `${mix1.perfora} impactos, ${mix1.rebotes} rebotes`);
+  const mix2 = prueba([MOD.ESCOPETA, MOD.REBOTE]);
+  comprobar('Escopeta + Rebote: cinco fragmentos que rebotan', mix2.n === 5 && mix2.rebotes >= 4);
+  const mix3 = prueba([MOD.ORBITAL, MOD.ESCOPETA]);
+  comprobar('Orbital + Escopeta genera dos nodos', mix3.orbitales === 2);
+}
+
+await esperar();
+
+// --------------------------------------------------------------- Jefe -----
+grupo('8 · Jefe: tres fases y muerte');
+if (mundo) {
+  mundo.nuevaPartida('JEFE');
+  const idx = mundo.progresion.plan.findIndex((s) => s.tipo === TIPO_SALA.JEFE);
+  mundo.cargarSala(idx);
+  mundo.jugador.colocar(mundo.sala.entrada.x + 400, mundo.sala.entrada.y - 40);
+  mundo.estadoSala = 0;
+  const f = input.frame;
+  const fases = new Set();
+  let murio = false;
+  for (let t = 0; t < 4000; t++) {
+    input.aplicarGrabado(f, 64, (t * 137) % 4096);
+    mundo.actualizar(1 / 60, f);
+    eventos.clear();
+    mundo.jugador.vida = 100;
+    const S = mundo.ent;
+    let jefe = -1;
+    for (let i = 0; i < S.count; i++) if (S.tipo[S.dense[i]] === TIPO.JEFE) jefe = S.dense[i];
+    if (jefe >= 0) { fases.add(S.estado[jefe]); mundo.danarEnemigo(jefe, 2.5, mundo.jugador.x, mundo.jugador.y, 1, 1, 1); }
+    else if (t > 90) { murio = true; break; }
+  }
+  comprobar('el jefe recorre sus tres fases', fases.size === 3, `fases vistas: ${[...fases].sort().join(', ')}`);
+  comprobar('el jefe muere y desaparece', murio);
+}
+
+await esperar();
+
+// -------------------------------------------------------------- Audio -----
+grupo('9 · Síntesis de audio (render offline)');
+try {
+  const SR = 44100;
+  const rms = (buf) => {
+    const d = buf.getChannelData(0);
+    let s = 0;
+    for (let i = 0; i < d.length; i++) s += d[i] * d[i];
+    return Math.sqrt(s / d.length);
+  };
+  const pico = (buf) => {
+    const d = buf.getChannelData(0);
+    let p = 0;
+    for (let i = 0; i < d.length; i++) p = Math.max(p, Math.abs(d[i]));
+    return p;
+  };
+  const render = async (dur, fn) => {
+    const ctx = new OfflineAudioContext(2, Math.floor(SR * dur), SR);
+    const buses = new Buses(ctx);
+    fn(ctx, buses, new Sfx(ctx, buses));
+    return ctx.startRendering();
+  };
+
+  // Se prueban con argumentos límite a propósito (0 incluido): la síntesis
+  // tiene que sonar igual y, sobre todo, no lanzar.
+  const nombres = ['salto', 'dash', 'disparo', 'danio', 'explosion', 'parry', 'muerteEnemigo', 'victoria', 'aterrizaje', 'gancho', 'cura', 'modulo', 'laser', 'recogida'];
+  let mudos = 0, saturados = 0;
+  for (const n of nombres) {
+    const buf = await render(2.0, (c, b, s) => { s[n](0); s[n](1); });
+    if (rms(buf) < 1e-4) mudos++;
+    if (pico(buf) > 1.001) saturados++;
+  }
+  comprobar('todos los efectos suenan', mudos === 0, `${nombres.length} efectos probados`);
+  comprobar('ningún efecto satura', saturados === 0);
+
+  const d1 = await render(1.2, (c, b, s) => s.disparo(0, 0, 0));
+  const d2 = await render(1.2, (c, b, s) => s.disparo(0, 0, 0));
+  comprobar('el mismo efecto nunca suena idéntico', Math.abs(rms(d1) - rms(d2)) > 1e-6);
+
+  let musicaMuda = 0;
+  for (let bioma = 0; bioma < 4; bioma++) {
+    const ctx = new OfflineAudioContext(2, SR * 4, SR);
+    const buses = new Buses(ctx);
+    const mus = new Musica(ctx, buses);
+    mus.bioma = bioma;
+    mus.tema = TEMAS[bioma];
+    mus.tension = TENSION.JEFE;
+    let t = 0;
+    for (let paso = 0; paso < 48; paso++) {
+      if (paso % 16 === 0) { mus.compasActual++; mus._aplicarCambios(t); }
+      mus._emitirPaso(paso % 16, t);
+      t += mus.duracionPaso;
+    }
+    const buf = await ctx.startRendering();
+    if (rms(buf) < 1e-4) musicaMuda++;
+  }
+  comprobar('los cuatro temas de bioma generan música', musicaMuda === 0);
+
+  {
+    const ctx = new OfflineAudioContext(2, SR * 2, SR);
+    const buses = new Buses(ctx);
+    const osc = ctx.createOscillator();
+    osc.frequency.value = 220;
+    const g = ctx.createGain();
+    g.gain.value = 0.5;
+    osc.connect(g).connect(buses.entradaMusica);
+    osc.start(0); osc.stop(2);
+    buses.duck(0.7, 0.4);
+    const buf = await ctx.startRendering();
+    const d = buf.getChannelData(0);
+    const tramo = (a, b) => { let s = 0; for (let i = a; i < b; i++) s += d[i] * d[i]; return Math.sqrt(s / (b - a)); };
+    comprobar('el ducking agacha la música bajo los golpes', tramo(SR * 0.02, SR * 0.06) < tramo(SR * 1.2, SR * 1.9) * 0.75);
+  }
+} catch (e) {
+  comprobar('síntesis de audio', false, String(e.message));
+}
+
+await esperar();
+
+// ---------------------------------------------------------- Rendimiento ---
+grupo('10 · Presupuesto de CPU (objetivo: < 8 ms por frame)');
+if (mundo && R) {
+  mundo.nuevaPartida('CARGA');
+  for (const m of [1, 2, 4, 8, 16, 32]) mundo.arma.desbloquear(m);
+  mundo.cargarSala(mundo.progresion.plan.findIndex((s) => s.tipo === TIPO_SALA.PLATAFORMAS));
+  mundo.estadoSala = 2;
+  mundo.camara.zoom = 0.75;
+  const TIPOS = [TIPO.DRON, TIPO.RASTREADOR, TIPO.VOLADOR, TIPO.ESCUDO, TIPO.ENJAMBRE, TIPO.BOMBARDERO];
+  for (let i = 0; i < 430; i++) {
+    const ang = i * 0.618 * Math.PI * 2, rad = 40 + (i % 40) * 22;
+    crearEnemigo(mundo, TIPOS[i % TIPOS.length],
+      mundo.jugador.x + Math.cos(ang) * rad, mundo.jugador.y + Math.sin(ang) * rad * 0.6, false, 40);
+  }
+  mundo.arma.equipados = [MOD.PERFORANTE, MOD.REBOTE, MOD.ESCOPETA];
+  for (let i = 0; i < 60; i++) { mundo.arma.enfriamiento = 0; mundo.arma.calor = 0; disparar(mundo, mundo.jugador, mundo.arma, i * 0.1, mundo.rng); }
+
+  const f = input.frame;
+  input.aplicarGrabado(f, 64 | 2, 0);
+  R.camara.construirMatriz(1, 1);
+  R.camara.vista(R.vistaMundo, 96);
+  for (let i = 0; i < 10; i++) { mundo.actualizar(1 / 60, f); eventos.clear(); }
+
+  const medir = (fn, n) => {
+    for (let i = 0; i < 8; i++) fn();
+    const t0 = performance.now();
+    for (let i = 0; i < n; i++) fn();
+    return (performance.now() - t0) / n;
+  };
+  const N = 40;
+  const mSim = medir(() => { mundo.actualizar(1 / 60, f); eventos.clear(); }, N);
+  const mMundo = medir(() => { R.lote.n = 0; dibujante.mundoIluminado(1, 1 / 60); R.lote.n = 0; }, N);
+  const mEmisivo = medir(() => { R.lote.n = 0; dibujante.emisivo(1); R.lote.n = 0; }, N);
+  const mLuces = medir(() => { R.luz.reiniciar(); dibujante.luces(1); }, N);
+  const mSombras = medir(() => {
+    for (let i = 0; i < Math.min(6, R.luz.n); i++) R.luz._poligono(R.luz.lx[i], R.luz.ly[i], R.luz.lr[i]);
+  }, N);
+  const mParticulas = medir(() => {
+    R.particulas.chispas(mundo.jugador.x, mundo.jugador.y, 60, 0, Math.PI, 500, 1, 0.7, 0.3, 1.6, 8);
+    R.particulas.escombros(mundo.jugador.x, mundo.jugador.y, 30, 400, 0.7, 0.6, 0.5);
+  }, N);
+
+  R.lote.n = 0;
+  dibujante.mundoIluminado(1, 1 / 60);
+  const encolados = R.lote.n;
+  R.lote.n = 0;
+
+  const total = mSim + mMundo + mEmisivo + mLuces + mSombras + mParticulas;
+  dato('entidades vivas', `${mundo.ent.count} (${mundo.estadisticas.enemigos} enemigos, ${mundo.estadisticas.proyectiles} proyectiles)`);
+  dato('sprites encolados por frame', `${encolados}`);
+  dato('simulación', `${mSim.toFixed(3)} ms`);
+  dato('tiles + entidades', `${mMundo.toFixed(3)} ms`);
+  dato('capa emisiva', `${mEmisivo.toFixed(3)} ms`);
+  dato('lista de luces', `${mLuces.toFixed(3)} ms`);
+  dato('polígonos de sombra (6 luces)', `${mSombras.toFixed(3)} ms`);
+  dato('emisión de partículas (90/frame)', `${mParticulas.toFixed(3)} ms`);
+  comprobar('CPU del motor por debajo del presupuesto', total < 8,
+    `${total.toFixed(3)} ms con ${mundo.ent.count} entidades`);
+}
+
+// ------------------------------------------------------------- Resumen ----
+const resumen = document.getElementById('resumen');
+resumen.className = fallidas === 0 ? 'todoOk' : 'hayFallos';
+resumen.innerHTML = fallidas === 0
+  ? `<strong class="ok">TODO CORRECTO</strong> — ${pasadas} comprobaciones superadas.`
+  : `<strong class="mal">${fallidas} FALLO(S)</strong> de ${pasadas + fallidas} comprobaciones.`;
+window.RESULTADO = { pasadas, fallidas };
+window.listo = true;
+</script>
+</body>
+</html>

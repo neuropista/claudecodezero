@@ -14,6 +14,7 @@ Basado en el guion docente *"Claude Code sin ser programador"* (Neuropista · An
 |---------|---------|
 | `index.html` | **2D cenital** — estilo RPG clásico de los 90, funciona en cualquier equipo |
 | `index3d.html` | **3D en primera persona** — dungeon crawler con **niveles de dificultad** (requiere WebGL) |
+| `vex/index.html` | **VEX: Colapso Neuronal** — roguelite de acción en WebGL2, con todo el arte y el audio generados por código (requiere WebGL2) |
 
 ```
 git clone https://github.com/neuropista/claudecodezero.git
@@ -23,8 +24,9 @@ O sírvelo localmente:
 
 ```
 python3 -m http.server 8000
-# 2D: http://localhost:8000/index.html
-# 3D: http://localhost:8000/index3d.html
+# 2D:  http://localhost:8000/index.html
+# 3D:  http://localhost:8000/index3d.html
+# VEX: http://localhost:8000/vex/
 ```
 
 ## 📖 La historia
@@ -110,9 +112,26 @@ js/audio.js              → chiptune compartido (WebAudio)
 js/data/questions.js     → banco de preguntas por zona + jefe final
 js/data/questions_hard.js→ banco EXPERTO (dificultad DIRECTOR)
 js/data/story.js         → historia, diálogos, mapas, códex y logros
+vex/                     → VEX: Colapso Neuronal (juego aparte, 45 módulos ES)
 ```
 
 Ninguna librería externa: el 3D está escrito directamente sobre WebGL, y todas las texturas, sprites y sonidos se generan por código al arrancar.
+
+---
+
+## 🧠 VEX: Colapso Neuronal
+
+Además de las dos ediciones docentes, el repositorio incluye **[VEX: Colapso Neuronal](vex/)**, un roguelite de acción y plataformas independiente del material educativo.
+
+Vex es una consciencia que corre dentro de una red neuronal que se apaga: cuatro biomas, 25 sectores generados por procedimiento, un jefe de tres fases por bioma y un arma de seis módulos que se combinan entre sí.
+
+Está construido con las mismas reglas llevadas al extremo: **ni motores, ni librerías, ni un solo archivo de imagen o de audio**. Renderizador 2D propio en WebGL2 con batching por instancias, iluminación dinámica con sombras por raycast, partículas en GPU con transform feedback y cadena de post-proceso; audio íntegramente sintetizado con música adaptativa por capas; y una simulación determinista de paso fijo que graba y reproduce partidas enteras desde la semilla.
+
+```
+python3 -m http.server 8000 --directory vex   → http://localhost:8000
+```
+
+Trae sus propias auto-pruebas en `vex/pruebas/`. Los detalles técnicos, los controles y las mediciones están en **[vex/README.md](vex/README.md)**.
 
 ---
 
