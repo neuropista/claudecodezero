@@ -95,6 +95,28 @@ export class Hud {
       R.texto('CADENA', R.ancho - 60 * s, 200 * s, 0.3 * s, 1, 0.75, 0.4, a * 0.8, 1);
     }
 
+    // ---- Carga del arma ----
+    // Se dibuja pegada al bloque de módulos: es una propiedad del arma, no del
+    // personaje, y conviene que se lea junto a lo que la modifica.
+    {
+      const cx = 58 * s + 68 * s;
+      const cy = R.alto - 92 * s - 52 * s;
+      const w = 190 * s;
+      const c = clamp(M.arma.carga, 0, 1);
+      const listo = c >= 1;
+      const pul = listo ? 0.75 + 0.25 * Math.sin(this.pulso * 10) : 1;
+      // Carril visible aunque esté vacío: si no, con la carga a cero el
+      // indicador desaparecía del todo y no se aprendía que existe.
+      lote.push(blanco, cx, cy, w + 2 * s, 8 * s, 0, 0.35, 0.55, 0.7, 0.35, 0.1, 0);
+      lote.push(blanco, cx, cy, w, 6 * s, 0, 0.04, 0.07, 0.11, 1, 0, 0);
+      if (c > 0.001) {
+        lote.push(blanco, cx - w * 0.5 + w * c * 0.5, cy, w * c, 6 * s, 0,
+          listo ? 1 : 0.45, listo ? 0.95 : 0.8, listo ? 0.7 : 1, pul, listo ? 0.8 : 0.3, 0);
+      }
+      R.texto(listo ? 'DISPARO CARGADO' : 'CARGA', cx, cy - 20 * s, 0.24 * s,
+        listo ? 1 : 0.5, listo ? 0.95 : 0.7, listo ? 0.7 : 0.85, listo ? pul : 0.6, 0.5);
+    }
+
     // ---- Sobrecalentamiento ----
     if (M.arma.calor > 0.35) {
       const w = 180 * s;

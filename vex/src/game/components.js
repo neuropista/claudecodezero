@@ -22,6 +22,16 @@ export const ESQUEMA = {
   iframes: 'f32',
   flash: 'f32',
 
+  // Aguante: el daño acumulado rompe la postura del enemigo y lo deja aturdido
+  // y vulnerable. Es lo que convierte disparar en algo con ritmo en vez de en
+  // vaciar una barra de vida.
+  aguante: 'f32', aguanteMax: 'f32',
+  aturdido: 'f32',
+  sinGolpe: 'f32',     // tiempo sin recibir daño (regeneración de aguante)
+  marca: 'f32',        // marca de la cadena eléctrica, lista para detonar
+  variante: 'u8',      // modificador de élite / nivel del divisor
+  enlace: 'i32',       // handle del compañero enlazado (tejedor)
+
   sprite: 'u16',
   cuadros: 'u8',
   anim: 'f32',
@@ -74,13 +84,27 @@ export const TIPO = {
   ESCOMBRO: 15,
   ORBITAL: 16,
   ONDA: 17,
+  TEJEDOR: 18,
+  ESPEJO: 19,
+  DIVISOR: 20,
 };
 
 export const NOMBRE_ENEMIGO = {
   3: 'Dron Centinela', 4: 'Rastreador', 5: 'Volador Sinaptico',
   6: 'Guardian con Escudo', 7: 'Enjambre', 8: 'Bombardero Inestable',
   9: 'Torreta', 10: 'FRAGMENTO PRIMARIO',
+  18: 'Tejedor', 19: 'Espejo', 20: 'Divisor',
 };
+
+/** Modificadores de élite. Cada uno cambia cómo hay que matarlo, no sólo cuánto. */
+export const ELITE = {
+  BLINDADO: 0,      // reduce el daño recibido, pero se le rompe antes la postura
+  VELOZ: 1,         // rápido y pequeño, aguanta poco
+  VOLATIL: 2,       // estalla al morir
+  REGENERADOR: 3,   // se cura si le dejas respirar
+};
+
+export const NOMBRE_ELITE = ['BLINDADO', 'VELOZ', 'VOLATIL', 'REGENERADOR'];
 
 export const FLAG = {
   MIRA_DERECHA: 1 << 0,
@@ -94,6 +118,9 @@ export const FLAG = {
   EN_AGUA: 1 << 8,
   ESCUDO_FRONTAL: 1 << 9,
   REFLEJADO: 1 << 10,
+  PARRYABLE: 1 << 11,     // ataque comprometido: se puede devolver con parry
+  CARGADO: 1 << 12,       // proyectil potenciado por la carga del arma
+  ABIERTO: 1 << 13,       // el espejo tiene la placa retirada: es vulnerable
 };
 
 export const CAPACIDAD = 3072;

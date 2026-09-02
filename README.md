@@ -125,7 +125,7 @@ Ninguna librería externa: el 3D está escrito directamente sobre WebGL, y todas
 
 Además de las dos ediciones docentes, el repositorio incluye **[VEX: Colapso Neuronal](vex/)**, un roguelite de acción y plataformas independiente del material educativo.
 
-Vex es una consciencia que corre dentro de una red neuronal que se apaga: cuatro biomas, 25 sectores generados por procedimiento, un jefe de tres fases por bioma y un arma de seis módulos que se combinan entre sí.
+Vex es una consciencia que corre dentro de una red neuronal que se apaga: cuatro biomas, 25 sectores generados por procedimiento, un jefe de tres fases por bioma, diez tipos de enemigo con puntos débiles y ataques telegrafiados, y un arma de seis módulos que se combinan entre sí.
 
 Está construido con las mismas reglas llevadas al extremo: **ni motores, ni librerías, ni un solo archivo de imagen o de audio**. Renderizador 2D propio en WebGL2 con batching por instancias, iluminación dinámica con sombras por raycast, partículas en GPU con transform feedback y cadena de post-proceso; audio íntegramente sintetizado con música adaptativa por capas; y una simulación determinista de paso fijo que graba y reproduce partidas enteras desde la semilla.
 

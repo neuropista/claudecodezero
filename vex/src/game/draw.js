@@ -4,13 +4,23 @@
 // emisiva (proyectiles, arcos, rayos, partículas), que se suma por encima de la
 // luz para que lo que brilla brille de verdad.
 
-import { MASK, TIPO, FLAG } from './components.js';
+import { MASK, TIPO, FLAG, ELITE } from './components.js';
+import { STATS, puntoDebil } from './enemies.js';
 import { TAM, T } from './tiles.js';
 import { ESTADO, P } from './player.js';
 import { TIPO_SALA } from './level.js';
 import { PALETAS_BIOMA } from '../render/spriteart.js';
+import { ZONA } from './fx.js';
 import { clamp, lerp, TAU } from '../core/math.js';
 import { cosmeticRng as CR } from '../core/rng.js';
+
+/** Color de cada modificador de élite, para que se distingan de un vistazo. */
+const TINTE_ELITE = [
+  [0.65, 0.88, 1.25],   // blindado
+  [1.35, 1.15, 0.45],   // veloz
+  [1.35, 0.7, 0.3],     // volatil
+  [0.5, 1.3, 0.7],      // regenerador
+];
 
 export class Dibujante {
   constructor(mundo) {
@@ -182,24 +192,85 @@ export class Dibujante {
       const t = this.R.atlas.tam2d;
       const w = t[idx * 2] * S.escala[e];
       const h = t[idx * 2 + 1] * S.escala[e];
-      const espejo = S.facing[e] < 0 ? -1 : 1;
       const flash = S.flash[e];
       const elite = (S.flags[e] & FLAG.ELITE) !== 0;
+      // El espejo se orienta hacia el jugador en vez de voltearse: su placa
+      // tiene que apuntar exactamente adonde va a rebotar el disparo.
+      const rotado = S.tipo[e] === TIPO.ESPEJO;
+      const espejo = rotado ? 1 : (S.facing[e] < 0 ? -1 : 1);
+      const rot = rotado ? S.angulo[e] : 0;
 
-      lote.push(idx, x, y, w * espejo, h, 0,
-        elite ? 1.25 : 1, elite ? 0.85 : 1, elite ? 0.85 : 1, 1,
-        elite ? 0.25 : 0.05, flash);
+      let tr = 1, tg = 1, tb = 1;
+      if (elite) {
+        const tinte = TINTE_ELITE[S.variante[e]] || TINTE_ELITE[0];
+        tr = tinte[0]; tg = tinte[1]; tb = tinte[2];
+      }
+      // Aturdido: se lava a blanco para que la ventana de castigo se vea sola.
+      const aturdido = S.aturdido[e] > 0;
+      const brillo = aturdido ? 0.55 : elite ? 0.25 : 0.05;
+
+      lote.push(idx, x, y, w * espejo, h, rot, tr, tg, tb, 1, brillo, flash);
+
+      if (elite) this._marcaElite(lote, x, y, h, S.variante[e]);
+      if (aturdido) this._marcaAturdido(lote, x, y, h, S.aturdido[e]);
+      this._marcaPuntoDebil(lote, S, e, x, y);
 
       // Cañón de la torreta, orientado al jugador.
       if (S.tipo[e] === TIPO.TORRETA) {
         lote.push(this.tiles.canon, x + Math.cos(S.angulo[e]) * 8, y - 14 + Math.sin(S.angulo[e]) * 8,
           40, 18, S.angulo[e], 1, 1, 1, 1, 0.12, flash);
       }
-      // Barra de vida de los grandes.
+      // Barra de vida de los grandes, con el aguante justo debajo.
       if ((m & MASK.VIDA) && S.vidaMax[e] > 90 && S.tipo[e] !== TIPO.JEFE && S.vida[e] < S.vidaMax[e]) {
-        this._barraVida(lote, x, y - h * 0.5 - 12, 44, S.vida[e] / S.vidaMax[e]);
+        const by = y - h * 0.5 - 12;
+        this._barraVida(lote, x, by, 44, S.vida[e] / S.vidaMax[e]);
+        if (S.aguanteMax[e] > 0 && S.aguante[e] < S.aguanteMax[e] * 0.995) {
+          const f = clamp(S.aguante[e] / S.aguanteMax[e], 0, 1);
+          lote.push(this.tiles.blanco, x - 44 * 0.5 * (1 - f), by + 6, 44 * f, 2.5, 0,
+            1, 0.85, 0.35, 0.9, 0.5, 0);
+        }
       }
     }
+  }
+
+  /** Distintivo de élite: un anillo con el color del modificador. */
+  _marcaElite(lote, x, y, h, variante) {
+    const t = this.tiempoAmbiente * 2.2 + variante;
+    const c = TINTE_ELITE[variante] || TINTE_ELITE[0];
+    const r = h * 0.62 + Math.sin(t) * 2;
+    lote.push(this.R.idx('fx.telegrafia.0'), x, y, r * 2, r * 2, t * 0.5,
+      c[0], c[1], c[2], 0.5, 0.6, 0);
+  }
+
+  /** Aturdido: anillo blanco girando encima. */
+  _marcaAturdido(lote, x, y, h, t) {
+    const a = clamp(t / 0.95, 0, 1);
+    const giro = this.tiempoAmbiente * 7;
+    for (let k = 0; k < 3; k++) {
+      const ang = giro + (k / 3) * TAU;
+      lote.push(this.tiles.blanco,
+        x + Math.cos(ang) * 18, y - h * 0.55 + Math.sin(ang) * 7,
+        5, 5, ang, 1, 0.92, 0.5, a, 1, 0);
+    }
+  }
+
+  /**
+   * Pista del punto débil: sólo se enseña cuando el jugador está cerca, y muy
+   * tenue. Es para que se aprenda dónde apuntar, no para señalarlo siempre.
+   */
+  _marcaPuntoDebil(lote, S, e, x, y) {
+    const j = this.mundo.jugador;
+    if (!j || j.id < 0) return;
+    const dx = j.x - S.x[e], dy = j.y - S.y[e];
+    const d2 = dx * dx + dy * dy;
+    if (d2 > 420 * 420) return;
+    if (!puntoDebil(S, e, this._debil || (this._debil = new Float32Array(4)))) return;
+    const P4 = this._debil;
+    const cerca = 1 - Math.min(1, Math.sqrt(d2) / 420);
+    const pulso = 0.35 + 0.3 * Math.sin(this.tiempoAmbiente * 5 + e);
+    const ox = P4[0] - S.x[e], oy = P4[1] - S.y[e];
+    lote.push(this.R.idx('fx.suave'), x + ox, y + oy, P4[2] * 2.4, P4[2] * 2.4, 0,
+      1, 0.88, 0.4, cerca * pulso * 0.5, 1, 0);
   }
 
   _barraVida(lote, x, y, ancho, frac) {
@@ -271,6 +342,40 @@ export class Dibujante {
       lote.push(Tl.ancla, j.ganchoX, j.ganchoY, 26, 26, M.tiempo * 3, 0.6, 0.95, 1, 1, 1, 0);
     }
 
+    // Retícula del objetivo fijado por el módulo Buscador.
+    const fijado = S.resolve(M.arma.objetivo);
+    if (fijado >= 0) {
+      const t = M.tiempo * 2.4;
+      const rad = Math.max(S.hw[fijado], S.hh[fijado]) * 1.9 + 8;
+      for (let k = 0; k < 4; k++) {
+        const a = t + (k / 4) * TAU;
+        lote.push(this.tiles.blanco,
+          S.x[fijado] + Math.cos(a) * rad, S.y[fijado] + Math.sin(a) * rad,
+          10, 3, a, 1, 0.55, 0.9, 0.85, 1, 0);
+      }
+    }
+
+    // Enemigos marcados por la cadena: el siguiente impacto detona.
+    for (let i = 0; i < S.count; i++) {
+      const e = S.dense[i];
+      if (S.alive[e] !== 1 || S.marca[e] <= 0) continue;
+      const a = clamp(S.marca[e] / 2.5, 0, 1);
+      const r = Math.max(S.hw[e], S.hh[e]) * 1.5;
+      lote.push(this.R.idx('fx.telegrafia.0'), S.x[e], S.y[e], r * 2, r * 2,
+        M.tiempo * 3, 0.72, 0.5, 1, 0.35 + a * 0.4, 1, 0);
+    }
+
+    // Cables entre tejedores: la amenaza es el segmento, no los nodos.
+    const cables = M.cables;
+    if (cables && cables.n > 0) {
+      for (let i = 0; i < cables.n; i++) {
+        this._rayo(lote, cables.x0[i], cables.y0[i], cables.x1[i], cables.y1[i],
+          1, 0.35, 1, 0.8, 16);
+        this._rayo(lote, cables.x0[i], cables.y0[i], cables.x1[i], cables.y1[i],
+          1, 0.9, 1, 0.95, 5);
+      }
+    }
+
     // Arcos de la cadena eléctrica.
     for (let i = 0; i < M.arcos.n; i++) {
       this._rayo(lote, M.arcos.x0[i], M.arcos.y0[i], M.arcos.x1[i], M.arcos.y1[i],
@@ -314,6 +419,8 @@ export class Dibujante {
       }
     }
 
+    this._zonas(lote);
+
     // Pool de efectos animados.
     const pool = M.fx.pool;
     const tam = this.R.atlas.tam2d;
@@ -327,6 +434,92 @@ export class Dibujante {
       const a = pool.a[i] * (1 - t * t);
       lote.push(idx, pool.x[i], pool.y[i], tam[idx * 2] * esc, tam[idx * 2 + 1] * esc,
         pool.rot[i], pool.r[i], pool.g[i], pool.b[i], a, 1, 0);
+    }
+  }
+
+  /**
+   * Zonas de peligro. El contorno dice dónde y el relleno dice cuándo: la barra
+   * avanza con el temporizador real del ataque, así que si llega al final es
+   * porque el golpe sale ya.
+   */
+  _zonas(lote) {
+    const Z = this.mundo.fx.zonas;
+    if (Z.n === 0) return;
+    const Tl = this.tiles;
+    const haz = Tl.haz, suave = Tl.suave, anillo = this.R.idx('fx.anillo.0');
+
+    for (let i = 0; i < Z.vivo.length; i++) {
+      if (!Z.vivo[i]) continue;
+      const p = clamp(Z.t[i] / Z.dur[i], 0, 1);
+      const r = Z.r[i], g = Z.g[i], b = Z.b[i];
+      // Late más rápido según se acerca el impacto, y da un fogonazo al final.
+      const latido = 0.35 + 0.35 * Math.sin(Z.t[i] * (9 + p * 26));
+      const inminente = p > 0.86 ? (p - 0.86) / 0.14 : 0;
+      const aContorno = (0.45 + latido * 0.55) * (1 - inminente * 0.25) + inminente * 0.8;
+      // La capa emisiva suma: con alfas bajos el relleno no llegaba a verse.
+      const aRelleno = 0.16 + inminente * 0.5;
+
+      if (Z.tipo[i] === ZONA.LINEA) {
+        const dx = Z.x2[i] - Z.x[i], dy = Z.y2[i] - Z.y[i];
+        const largo = Math.hypot(dx, dy);
+        if (largo < 1) continue;
+        const ang = Math.atan2(dy, dx);
+        const nx = -Math.sin(ang), ny = Math.cos(ang);
+        const mitad = Z.grosor[i] * 0.5;
+        const cx = Z.x[i] + dx * 0.5, cy = Z.y[i] + dy * 0.5;
+        const ux = Math.cos(ang), uy = Math.sin(ang);
+        // Banda tenue de fondo: dice DÓNDE.
+        lote.push(Tl.blanco, cx, cy, largo, Z.grosor[i], ang, r, g, b, 0.10 + inminente * 0.2, 1, 0);
+        // Relleno que avanza: dice CUÁNDO.
+        const lleno = largo * p;
+        lote.push(Tl.blanco, Z.x[i] + ux * lleno * 0.5, Z.y[i] + uy * lleno * 0.5,
+          lleno, Z.grosor[i], ang, r, g, b, aRelleno, 1, 0);
+        // Bordes.
+        for (const s2 of [-1, 1]) {
+          lote.push(haz, cx + nx * mitad * s2, cy + ny * mitad * s2, largo, 6, ang, r, g, b, aContorno, 1, 0);
+        }
+        // Frente del relleno.
+        lote.push(haz, Z.x[i] + ux * lleno, Z.y[i] + uy * lleno,
+          Z.grosor[i] + 6, 8, ang + Math.PI * 0.5, 1, 0.9, 0.85, aContorno, 1, 0);
+
+      } else if (Z.tipo[i] === ZONA.CONO) {
+        const n = 13;
+        const radio = Z.radio[i];
+        const lleno = radio * p;
+        // Relleno en abanico: bandas anchas para que se lea como un área.
+        const grosorBanda = (Z.apertura[i] * 2 * radio) / (n - 1) + 8;
+        for (let k = 0; k < n; k++) {
+          const a = Z.ang[i] + (k / (n - 1) - 0.5) * Z.apertura[i] * 2;
+          lote.push(haz, Z.x[i] + Math.cos(a) * radio * 0.5, Z.y[i] + Math.sin(a) * radio * 0.5,
+            radio, grosorBanda, a, r, g, b, 0.07 + inminente * 0.12, 1, 0);
+          lote.push(haz, Z.x[i] + Math.cos(a) * lleno * 0.5, Z.y[i] + Math.sin(a) * lleno * 0.5,
+            lleno, grosorBanda, a, r, g, b, aRelleno * 0.55, 1, 0);
+        }
+        // Aristas y arco del frente.
+        for (const s2 of [-1, 1]) {
+          const a = Z.ang[i] + s2 * Z.apertura[i];
+          lote.push(haz, Z.x[i] + Math.cos(a) * radio * 0.5, Z.y[i] + Math.sin(a) * radio * 0.5,
+            radio, 6, a, r, g, b, aContorno, 1, 0);
+        }
+        const pasos = 10;
+        for (let k = 0; k < pasos; k++) {
+          const a = Z.ang[i] + ((k / (pasos - 1)) - 0.5) * Z.apertura[i] * 2;
+          const a2 = Z.ang[i] + (((k + 1) / (pasos - 1)) - 0.5) * Z.apertura[i] * 2;
+          const x1 = Z.x[i] + Math.cos(a) * lleno, y1 = Z.y[i] + Math.sin(a) * lleno;
+          const x2 = Z.x[i] + Math.cos(a2) * lleno, y2 = Z.y[i] + Math.sin(a2) * lleno;
+          if (k === pasos - 1) break;
+          lote.push(haz, (x1 + x2) * 0.5, (y1 + y2) * 0.5, Math.hypot(x2 - x1, y2 - y1) + 4, 7,
+            Math.atan2(y2 - y1, x2 - x1), 1, 0.9, 0.85, aContorno * 0.9, 1, 0);
+        }
+
+      } else {
+        const radio = Z.radio[i];
+        lote.push(suave, Z.x[i], Z.y[i], radio * 2, radio * 2, 0, r, g, b, 0.10 + inminente * 0.22, 1, 0);
+        lote.push(suave, Z.x[i], Z.y[i], radio * 2 * p, radio * 2 * p, 0, r, g, b, aRelleno, 1, 0);
+        lote.push(anillo + 4, Z.x[i], Z.y[i], radio * 2.3, radio * 2.3, 0, r, g, b, aContorno, 1, 0);
+        lote.push(anillo + 4, Z.x[i], Z.y[i], radio * 2.3 * p, radio * 2.3 * p, 0,
+          1, 0.9, 0.85, aContorno * 0.8, 1, 0);
+      }
     }
   }
 

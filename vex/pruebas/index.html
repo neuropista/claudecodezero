@@ -56,9 +56,9 @@ import { generarSala, TIPO_SALA } from '../src/game/level.js';
 import { Buses } from '../src/audio/buses.js';
 import { Sfx } from '../src/audio/sfx.js';
 import { Musica, TENSION, TEMAS } from '../src/audio/music.js';
-import { disparar, MOD } from '../src/game/weapons.js';
-import { TIPO } from '../src/game/components.js';
-import { crearEnemigo } from '../src/game/enemies.js';
+import { disparar, MOD, comboDe, COMBOS } from '../src/game/weapons.js';
+import { TIPO, FLAG, ELITE } from '../src/game/components.js';
+import { crearEnemigo, reflejaEspejo, puntoDebil, STATS } from '../src/game/enemies.js';
 
 const salida = document.getElementById('salida');
 let pasadas = 0, fallidas = 0;
@@ -433,8 +433,297 @@ try {
 
 await esperar();
 
+
+// -------------------------------------------------- Enemigos: sistemas -----
+grupo('10 · Enemigos: aguante, puntos débiles y comportamientos');
+if (mundo) {
+  const S = mundo.ent;
+  const frame = input.frame;
+  // Sala de reposo: despejada, sin geometría que estorbe a las pruebas.
+  const salaLimpia = (semilla) => {
+    mundo.nuevaPartida(semilla);
+    for (const m of [1, 2, 4, 8, 16, 32]) mundo.arma.desbloquear(m);
+    mundo.cargarSala(mundo.progresion.plan.findIndex((r) => r.tipo === TIPO_SALA.REPOSO));
+    mundo.estadoSala = 2;
+    S.clear();
+    mundo.jugador.crear(mundo.sala.anchoPx * 0.5 - 150, mundo.sala.altoPx - 150);
+    mundo.jugador.reset();
+    mundo.jugador.estado = 1;
+  };
+  const tick = (n = 1) => {
+    for (let t = 0; t < n; t++) {
+      input.aplicarGrabado(frame, 0, 0);
+      mundo.actualizar(1 / 60, frame);
+      eventos.clear();
+      mundo.jugador.vida = 100;
+    }
+  };
+
+  // Aguante
+  salaLimpia('AGUANTE');
+  let e = crearEnemigo(mundo, TIPO.ESCUDO, mundo.jugador.x + 220, mundo.jugador.y, false, 3);
+  let roto = false, golpes = 0;
+  for (let t = 0; t < 300 && S.alive[e] === 1; t++) {
+    mundo.danarEnemigo(e, 7, S.x[e], S.y[e] + 40, 1, 1, 1, false);
+    golpes++;
+    if (S.aturdido[e] > 0) { roto = true; break; }
+    tick();
+  }
+  comprobar('el daño acumulado rompe la postura', roto, `${golpes} impactos`);
+  comprobar('aturdido queda con vida (no es sólo matarlo)', roto && S.vida[e] > 0,
+    `${Math.round(S.vida[e])} de vida al aturdirse`);
+
+  // Punto débil
+  salaLimpia('CRITICO');
+  e = crearEnemigo(mundo, TIPO.ESCUDO, mundo.jugador.x + 220, mundo.jugador.y, false, 3);
+  S.facing[e] = 1;
+  const frontal = mundo.danarEnemigo(e, 20, S.x[e] + 50, S.y[e], 1, 1, 1);
+  S.aturdido[e] = 0;
+  const espalda = mundo.danarEnemigo(e, 20, S.x[e] - 20, S.y[e], 1, 1, 1);
+  comprobar('acertar el punto débil multiplica el daño', espalda > frontal * 1.8,
+    `${frontal.toFixed(0)} de frente vs ${espalda.toFixed(0)} en el punto débil`);
+  comprobar('el daño de área nunca es crítico',
+    mundo.danarEnemigo(e, 20, S.x[e], S.y[e], 1, 1, 1, false) < frontal * 1.8);
+
+  // Escudo frontal
+  salaLimpia('ESCUDO');
+  e = crearEnemigo(mundo, TIPO.ESCUDO, mundo.jugador.x + 220, mundo.jugador.y, false, 3);
+  S.facing[e] = 1;
+  const { bloqueaEscudo } = await import('../src/game/enemies.js');
+  comprobar('el escudo bloquea por delante y no por detrás',
+    bloqueaEscudo(S, e, S.x[e] + 60, S.y[e]) && !bloqueaEscudo(S, e, S.x[e] - 60, S.y[e]));
+  S.aturdido[e] = 1;
+  comprobar('aturdido baja la guardia', !bloqueaEscudo(S, e, S.x[e] + 60, S.y[e]));
+
+  // Espejo
+  salaLimpia('ESPEJO');
+  e = crearEnemigo(mundo, TIPO.ESPEJO, mundo.jugador.x + 200, mundo.jugador.y - 20, false, 3);
+  mundo.arma.equipados = [];
+  let devueltas = 0, haciaElJugador = 0;
+  const vidaEspejo = S.vida[e];
+  for (let t = 0; t < 200 && S.alive[e] === 1; t++) {
+    // Se fuerza la placa puesta ANTES del tick: dentro del tick la IA podría
+    // abrirla y las colisiones de ese mismo tick lo encontrarían vulnerable.
+    S.flags[e] &= ~FLAG.ABIERTO;
+    S.t1[e] = 99;
+    if (t % 12 === 0) {
+      mundo.arma.enfriamiento = 0; mundo.arma.calor = 0;
+      mundo.arma.sobrecalentada = false; mundo.arma.carga = 0;
+      disparar(mundo, mundo.jugador, mundo.arma, 0, mundo.rng);
+    }
+    input.aplicarGrabado(frame, 0, 0);
+    mundo.actualizar(1 / 60, frame);
+    eventos.clear();
+    mundo.jugador.vida = 100; mundo.jugador.iframes = 99;
+    for (let i = 0; i < S.count; i++) {
+      const q = S.dense[i];
+      if (S.alive[q] === 1 && S.tipo[q] === TIPO.BALA_ENEMIGA) {
+        devueltas++;
+        if (S.vx[q] < 0) haciaElJugador++;
+      }
+    }
+  }
+  comprobar('con la placa puesta devuelve los disparos', devueltas > 0);
+  comprobar('los devuelve hacia el jugador', haciaElJugador === devueltas,
+    `${haciaElJugador}/${devueltas}`);
+  comprobar('con la placa puesta no recibe daño', S.vida[e] >= vidaEspejo);
+  // Ventana abierta
+  const antesAbierto = S.vida[e];
+  S.flags[e] |= FLAG.ABIERTO;
+  for (let t = 0; t < 90 && S.alive[e] === 1; t++) {
+    S.flags[e] |= FLAG.ABIERTO;
+    S.t1[e] = 99;
+    if (t % 12 === 0) {
+      mundo.arma.enfriamiento = 0; mundo.arma.calor = 0;
+      mundo.arma.sobrecalentada = false; mundo.arma.carga = 0;
+      disparar(mundo, mundo.jugador, mundo.arma, 0, mundo.rng);
+    }
+    input.aplicarGrabado(frame, 0, 0);
+    mundo.actualizar(1 / 60, frame);
+    eventos.clear();
+  }
+  comprobar('abierto sí recibe daño', S.alive[e] !== 1 || S.vida[e] < antesAbierto,
+    `${Math.round(antesAbierto - (S.alive[e] === 1 ? S.vida[e] : 0))} de daño`);
+
+  // Tejedor
+  salaLimpia('TEJEDOR');
+  const a1 = crearEnemigo(mundo, TIPO.TEJEDOR, mundo.jugador.x - 160, mundo.jugador.y - 60, false, 3);
+  const a2 = crearEnemigo(mundo, TIPO.TEJEDOR, mundo.jugador.x + 160, mundo.jugador.y - 60, false, 3);
+  tick(60);
+  comprobar('los tejedores se emparejan', S.resolve(S.enlace[a1]) === a2 && S.resolve(S.enlace[a2]) === a1);
+  comprobar('la pareja tiende un cable', mundo.cables && mundo.cables.n === 1);
+  mundo.matarEnemigo(a2, false);
+  S.flush();
+  tick(3);
+  comprobar('matar a uno corta el cable', !mundo.cables || mundo.cables.n === 0);
+
+  // Divisor
+  salaLimpia('DIVISOR');
+  e = crearEnemigo(mundo, TIPO.DIVISOR, mundo.jugador.x + 200, mundo.jugador.y - 40, false, 1);
+  mundo.matarEnemigo(e, false);
+  S.flush();
+  let crias = 0, nivelMax = 0;
+  for (let i = 0; i < S.count; i++) {
+    const q = S.dense[i];
+    if (S.tipo[q] === TIPO.DIVISOR) { crias++; nivelMax = Math.max(nivelMax, S.variante[q]); }
+  }
+  comprobar('el divisor deja dos crías de nivel inferior', crias === 2 && nivelMax === 1);
+  // La última generación ya no se parte
+  for (let i = 0; i < S.count; i++) {
+    const q = S.dense[i];
+    if (S.tipo[q] === TIPO.DIVISOR) { S.variante[q] = 2; mundo.matarEnemigo(q, false); }
+  }
+  S.flush();
+  let quedan = 0;
+  for (let i = 0; i < S.count; i++) if (S.tipo[S.dense[i]] === TIPO.DIVISOR) quedan++;
+  comprobar('la última generación ya no se multiplica', quedan === 0);
+
+  // Élites
+  salaLimpia('ELITE');
+  const vistas = new Set();
+  for (let k = 0; k < 60; k++) {
+    const q = crearEnemigo(mundo, TIPO.DRON, 300 + (k % 20) * 30, 300 + Math.floor(k / 20) * 30, true, 1);
+    if (q >= 0) vistas.add(S.variante[q]);
+  }
+  comprobar('salen los cuatro modificadores de élite', vistas.size === 4, `vistos: ${[...vistas].sort().join(', ')}`);
+
+  // Parry contra ataque comprometido
+  salaLimpia('PARRY');
+  e = crearEnemigo(mundo, TIPO.RASTREADOR, mundo.jugador.x + 80, mundo.jugador.y, false, 3);
+  S.flags[e] |= FLAG.PARRYABLE;
+  mundo._construirRejilla();
+  mundo.jugador.dashDisponible = false;
+  mundo.jugador.parryT = 0.15;
+  mundo.jugador._resolverParry();
+  comprobar('el parry corta el ataque y aturde al atacante', S.aturdido[e] > 0);
+  comprobar('el parry devuelve el dash', mundo.jugador.dashDisponible);
+
+  // Separación
+  salaLimpia('SEPARACION');
+  const medirMinima = () => {
+    const vivos = [];
+    for (let i = 0; i < S.count; i++) { const q = S.dense[i]; if (S.tipo[q] === TIPO.DRON) vivos.push(q); }
+    let min = Infinity;
+    for (let i = 0; i < vivos.length; i++) {
+      for (let k = i + 1; k < vivos.length; k++) {
+        const dx = S.x[vivos[i]] - S.x[vivos[k]], dy = S.y[vivos[i]] - S.y[vivos[k]];
+        min = Math.min(min, Math.hypot(dx, dy));
+      }
+    }
+    return { min, n: vivos.length };
+  };
+  // Se generan doce en el MISMO punto: el caso más degenerado posible.
+  for (let k = 0; k < 12; k++) crearEnemigo(mundo, TIPO.DRON, mundo.jugador.x + 200, mundo.jugador.y - 40, false, 3);
+  const alNacer = medirMinima();
+  tick(90);
+  const tras = medirMinima();
+  comprobar('doce enemigos generados en el mismo punto dejan de solaparse',
+    tras.n >= 10 && tras.min > 16,
+    `distancia mínima ${alNacer.min.toFixed(1)} px → ${tras.min.toFixed(1)} px`);
+}
+
+await esperar();
+
+// ------------------------------------------------------- Arma: sistemas ----
+grupo('11 · Arma: carga, fijado y cadena');
+if (mundo) {
+  const S = mundo.ent;
+  const frame = input.frame;
+  const preparar = (semilla) => {
+    mundo.nuevaPartida(semilla);
+    for (const m of [1, 2, 4, 8, 16, 32]) mundo.arma.desbloquear(m);
+    mundo.cargarSala(mundo.progresion.plan.findIndex((r) => r.tipo === TIPO_SALA.REPOSO));
+    mundo.estadoSala = 2;
+    S.clear();
+    mundo.jugador.crear(mundo.sala.anchoPx * 0.5 - 150, mundo.sala.altoPx - 150);
+    mundo.jugador.reset();
+    mundo.jugador.estado = 1;
+  };
+
+  // Carga
+  preparar('CARGA');
+  mundo.arma.equipados = [];
+  mundo.arma.carga = 0; mundo.arma.silencio = 0;
+  for (let t = 0; t < 30; t++) mundo.arma.actualizar(1 / 60);
+  const aMedias = mundo.arma.carga;
+  for (let t = 0; t < 120; t++) mundo.arma.actualizar(1 / 60);
+  comprobar('la carga sube sola mientras no disparas', mundo.arma.cargado && aMedias < 1,
+    `${(aMedias * 100).toFixed(0)} % a los 0,5 s`);
+
+  const medirDisparo = (cargado) => {
+    S.clear();
+    mundo.jugador.crear(600, 500);
+    mundo.arma.enfriamiento = 0; mundo.arma.calor = 0; mundo.arma.sobrecalentada = false;
+    mundo.arma.carga = cargado ? 1 : 0;
+    mundo.arma.orbitales = 0;
+    disparar(mundo, mundo.jugador, mundo.arma, 0, mundo.rng);
+    let n = 0, dmg = 0, esc = 0, perf = 0;
+    for (let i = 0; i < S.count; i++) {
+      const q = S.dense[i];
+      if (S.tipo[q] !== TIPO.BALA_JUGADOR && S.tipo[q] !== TIPO.ORBITAL) continue;
+      n++; dmg = Math.max(dmg, S.dmg[q]); esc = Math.max(esc, S.escala[q]); perf = Math.max(perf, S.golpes[q]);
+    }
+    return { n, dmg, esc, perf };
+  };
+  mundo.arma.equipados = [];
+  const normal = medirDisparo(false);
+  const cargado = medirDisparo(true);
+  comprobar('el disparo cargado pega mucho más', cargado.dmg > normal.dmg * 2.4,
+    `${normal.dmg.toFixed(0)} → ${cargado.dmg.toFixed(0)}`);
+  comprobar('el disparo cargado es más grande y perfora más',
+    cargado.esc > normal.esc && cargado.perf > normal.perf);
+  mundo.arma.equipados = [MOD.ESCOPETA];
+  const escNormal = medirDisparo(false);
+  const escCargado = medirDisparo(true);
+  comprobar('la escopeta cargada concentra el abanico', escCargado.n > escNormal.n,
+    `${escNormal.n} → ${escCargado.n} fragmentos`);
+  mundo.arma.equipados = [MOD.ORBITAL];
+  const orbNormal = medirDisparo(false);
+  mundo.arma.orbitales = 0;
+  const orbCargado = medirDisparo(true);
+  comprobar('el orbital cargado despliega la corona entera', orbCargado.n > orbNormal.n,
+    `${orbNormal.n} → ${orbCargado.n} nodos`);
+
+  // Fijado de blanco
+  preparar('FIJADO');
+  mundo.arma.equipados = [MOD.BUSCADOR];
+  const lejosEnEje = crearEnemigo(mundo, TIPO.DRON, mundo.jugador.x + 380, mundo.jugador.y, false, 3);
+  const cercaFuera = crearEnemigo(mundo, TIPO.DRON, mundo.jugador.x - 60, mundo.jugador.y - 140, false, 3);
+  mundo._construirRejilla();
+  input.aplicarGrabado(frame, 0, 0);
+  mundo._fijarObjetivo(frame);
+  comprobar('el fijado prefiere lo que está en la línea de tiro, no lo más cercano',
+    S.resolve(mundo.arma.objetivo) === lejosEnEje);
+  mundo.arma.equipados = [];
+  mundo._fijarObjetivo(frame);
+  comprobar('sin el módulo Buscador no hay fijado', mundo.arma.objetivo === -1);
+
+  // Cadena con marcas
+  preparar('CADENA');
+  mundo.arma.equipados = [MOD.CADENA];
+  const solo = crearEnemigo(mundo, TIPO.ESCUDO, mundo.jugador.x + 200, mundo.jugador.y, false, 8);
+  mundo._construirRejilla();
+  mundo._cadenaElectrica(solo, S.x[solo] - 20, S.y[solo], 12, 2);
+  const marcado = S.marca[solo] > 0;
+  const vidaAntes = S.vida[solo];
+  mundo._cadenaElectrica(solo, S.x[solo] - 20, S.y[solo], 12, 2);
+  comprobar('el primer impacto marca al objetivo', marcado);
+  comprobar('el segundo detona la marca', S.marca[solo] === 0 && S.vida[solo] < vidaAntes,
+    `${Math.round(vidaAntes - S.vida[solo])} de daño al detonar`);
+
+  // Combinaciones con nombre
+  let sinNombre = 0;
+  for (const c of COMBOS) if (!comboDe(c.bits)) sinNombre++;
+  comprobar('todas las combinaciones declaradas se reconocen', sinNombre === 0, `${COMBOS.length} combos`);
+  comprobar('gana la combinación más específica',
+    comboDe(MOD.PERFORANTE | MOD.REBOTE | MOD.CADENA).nombre === 'TORMENTA ESTATICA');
+  comprobar('un módulo suelto no inventa combo', comboDe(MOD.PERFORANTE) === null);
+}
+
+await esperar();
+
 // ---------------------------------------------------------- Rendimiento ---
-grupo('10 · Presupuesto de CPU (objetivo: < 8 ms por frame)');
+grupo('12 · Presupuesto de CPU (objetivo: < 8 ms por frame)');
 if (mundo && R) {
   mundo.nuevaPartida('CARGA');
   for (const m of [1, 2, 4, 8, 16, 32]) mundo.arma.desbloquear(m);

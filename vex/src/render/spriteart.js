@@ -481,6 +481,128 @@ function registrarEnemigos(atlas) {
     ctx.beginPath(); ctx.arc(cx, cy, 3.4, 0, Math.PI * 2); ctx.fill();
   });
 
+  // Tejedor: nodo que tiende un cable de energía con su pareja.
+  atlas.addTira('enem.tejedor', 5, 46, 46, (ctx, w, h, i, n) => {
+    const t = (i / n) * Math.PI * 2;
+    const cx = w / 2, cy = h / 2;
+    halo(ctx, cx, cy, 20, '90,255,210', 0.35);
+    // Filamentos que giran.
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(t * 0.6);
+    ctx.strokeStyle = '#5cffcf';
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = 0.75;
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * Math.PI * 2;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * 9, Math.sin(a) * 9);
+      ctx.lineTo(Math.cos(a) * (17 + Math.sin(t + k) * 3), Math.sin(a) * (17 + Math.sin(t + k) * 3));
+      ctx.stroke();
+    }
+    ctx.restore();
+    // Cuerpo romboidal.
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = grad(ctx, -10, -10, 10, 10, [[0, '#1d4a42'], [1, '#0b201d']]);
+    ctx.fillRect(-9, -9, 18, 18);
+    ctx.strokeStyle = '#3fd7ae'; ctx.lineWidth = 2; ctx.strokeRect(-9, -9, 18, 18);
+    ctx.restore();
+    halo(ctx, cx, cy, 8, '160,255,230', 0.95);
+    ctx.fillStyle = '#e8fff8';
+    ctx.beginPath(); ctx.arc(cx, cy, 3 + Math.sin(t * 2) * 0.6, 0, Math.PI * 2); ctx.fill();
+  });
+
+  // Espejo (placa puesta): devuelve los disparos que le llegan de frente.
+  atlas.addTira('enem.espejo', 4, 56, 52, (ctx, w, h, i, n) => {
+    const t = (i / n) * Math.PI * 2;
+    const cx = w / 2 - 4, cy = h / 2;
+    halo(ctx, cx, cy, 20, '150,190,255', 0.28);
+    // Cuerpo hexagonal.
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.fillStyle = grad(ctx, -16, -16, 16, 16, [[0, CHASIS_ALTO], [1, CHASIS]]);
+    estrella(ctx, 0, 0, 6, 16, 14, Math.PI / 6);
+    ctx.fill();
+    ctx.strokeStyle = '#5f7fb8'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.restore();
+    // Placa reflectante, montada hacia +x (el sprite se voltea con la mirada).
+    ctx.save();
+    ctx.translate(cx + 6, cy);
+    ctx.shadowColor = '#bfe4ff'; ctx.shadowBlur = 12;
+    const g = ctx.createLinearGradient(0, -20, 8, 20);
+    g.addColorStop(0, 'rgba(220,240,255,0.95)');
+    g.addColorStop(0.45 + 0.12 * Math.sin(t), 'rgba(255,255,255,1)');
+    g.addColorStop(1, 'rgba(150,190,235,0.85)');
+    ctx.strokeStyle = g;
+    ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.arc(-4, 0, 20, -1.05, 1.05); ctx.stroke();
+    ctx.globalAlpha = 0.4; ctx.lineWidth = 12;
+    ctx.beginPath(); ctx.arc(-4, 0, 20, -1.05, 1.05); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = '#8fb4e8';
+    ctx.beginPath(); ctx.arc(cx - 4, cy, 3, 0, Math.PI * 2); ctx.fill();
+  });
+
+  // Espejo abierto: la placa se retira y deja el núcleo a tiro.
+  atlas.addTira('enem.espejoAbierto', 3, 56, 52, (ctx, w, h, i, n) => {
+    const t = i / (n - 1);
+    const cx = w / 2 - 4, cy = h / 2;
+    halo(ctx, cx, cy, 24, '90,255,150', 0.5);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.fillStyle = grad(ctx, -16, -16, 16, 16, [[0, CHASIS_ALTO], [1, CHASIS]]);
+    estrella(ctx, 0, 0, 6, 16, 14, Math.PI / 6);
+    ctx.fill();
+    ctx.strokeStyle = '#4fa87a'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.restore();
+    // Las dos mitades de la placa, separadas.
+    ctx.save();
+    ctx.translate(cx + 6, cy);
+    ctx.strokeStyle = 'rgba(200,225,255,0.8)';
+    ctx.lineWidth = 5;
+    for (const s2 of [-1, 1]) {
+      ctx.beginPath();
+      ctx.arc(-4, s2 * (7 + t * 9), 20, s2 > 0 ? 0.12 : -1.05, s2 > 0 ? 1.05 : -0.12);
+      ctx.stroke();
+    }
+    ctx.restore();
+    // Núcleo expuesto.
+    halo(ctx, cx, cy, 12, '110,255,170', 0.95);
+    ctx.fillStyle = '#e6fff0';
+    ctx.beginPath(); ctx.arc(cx, cy, 5.5, 0, Math.PI * 2); ctx.fill();
+  });
+
+  // Divisor: masa que se parte en dos al morir.
+  atlas.addTira('enem.divisor', 4, 52, 48, (ctx, w, h, i, n, r) => {
+    const t = (i / n) * Math.PI * 2;
+    const cx = w / 2, cy = h / 2;
+    halo(ctx, cx, cy, 22, '255,110,190', 0.32);
+    const wob = 1 + Math.sin(t) * 0.06;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(wob, 2 - wob);
+    ctx.fillStyle = grad(ctx, -20, -18, 20, 18, [[0, '#4a1638'], [1, '#1c0714']]);
+    ctx.beginPath(); ctx.ellipse(0, 0, 20, 17, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#ff62be'; ctx.lineWidth = 2.2; ctx.stroke();
+    // Costura por donde se partirá.
+    ctx.strokeStyle = 'rgba(255,150,215,0.55)';
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(0, -17); ctx.lineTo(0, 17); ctx.stroke();
+    ctx.setLineDash([]);
+    // Células internas.
+    for (let k = 0; k < 3; k++) {
+      const a = t + k * 2.1;
+      halo(ctx, Math.cos(a) * 7, Math.sin(a * 1.3) * 5, 6, '255,150,215', 0.7);
+    }
+    ctx.restore();
+    ctx.fillStyle = '#ffd9f0';
+    ctx.beginPath(); ctx.arc(cx, cy - 4, 3, 0, Math.PI * 2); ctx.fill();
+  });
+
   // Bombardero: cuerpo esférico inestable.
   atlas.addTira('enem.bombardero', 5, 48, 48, (ctx, w, h, i, n) => {
     const t = i / n;

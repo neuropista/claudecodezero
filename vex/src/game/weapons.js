@@ -49,6 +49,42 @@ export const LISTA_MODULOS = [
 
 export const MAX_EQUIPADOS = 3;
 
+/**
+ * Combinaciones con nombre. No cambian las reglas —los módulos ya se acumulan
+ * solos— pero le ponen nombre a lo que el jugador acaba de descubrir, que es la
+ * diferencia entre "llevo tres iconos" y "llevo la Tormenta de Esquirlas".
+ */
+export const COMBOS = [
+  { bits: MOD.PERFORANTE | MOD.REBOTE | MOD.CADENA, nombre: 'TORMENTA ESTATICA', efecto: 'Atraviesa, rebota y electrifica todo lo que toca' },
+  { bits: MOD.ESCOPETA | MOD.BUSCADOR | MOD.CADENA, nombre: 'JAURIA', efecto: 'Cinco fragmentos que buscan y encadenan' },
+  { bits: MOD.PERFORANTE | MOD.REBOTE, nombre: 'LANZA RICOCHETE', efecto: 'Una lanza que atraviesa y sigue viva al rebotar' },
+  { bits: MOD.ESCOPETA | MOD.REBOTE, nombre: 'TORMENTA DE ESQUIRLAS', efecto: 'Convierte una sala cerrada en una trampa' },
+  { bits: MOD.ORBITAL | MOD.BUSCADOR, nombre: 'ENJAMBRE CAZADOR', efecto: 'Nodos que esperan girando y salen a por su presa' },
+  { bits: MOD.PERFORANTE | MOD.CADENA, nombre: 'PARARRAYOS', efecto: 'El arco salta desde cada cuerpo perforado' },
+  { bits: MOD.ESCOPETA | MOD.PERFORANTE, nombre: 'LANZA DE FRAGMENTOS', efecto: 'Abanico que recupera el alcance perdido' },
+  { bits: MOD.ORBITAL | MOD.CADENA, nombre: 'REACTOR', efecto: 'Anillo de nodos que electrifica por contacto' },
+  { bits: MOD.BUSCADOR | MOD.REBOTE, nombre: 'AVISPA LOCA', efecto: 'Corrige tras cada rebote: no suelta al objetivo' },
+  { bits: MOD.ORBITAL | MOD.ESCOPETA, nombre: 'CORONA', efecto: 'Dos nodos por disparo, muralla alrededor' },
+  { bits: MOD.BUSCADOR | MOD.CADENA, nombre: 'CONDUCTOR', efecto: 'Marca al objetivo y detona el arco al reimpactar' },
+];
+
+/** Devuelve el combo con nombre que mejor describe una máscara, o null. */
+export function comboDe(mascara) {
+  let mejor = null, mejorBits = 0;
+  for (const c of COMBOS) {
+    if ((mascara & c.bits) !== c.bits) continue;
+    let n = 0;
+    for (let b = c.bits; b; b >>= 1) n += b & 1;
+    if (n > mejorBits) { mejor = c; mejorBits = n; }
+  }
+  return mejor;
+}
+
+// Carga: se acumula mientras NO disparas. Premia las ráfagas con criterio en
+// vez de mantener el gatillo, y no necesita ningún botón nuevo.
+const RETARDO_CARGA = 0.28;    // silencio mínimo antes de empezar a cargar
+const TIEMPO_CARGA = 0.82;     // de 0 a listo, una vez empezado
+
 const VELOCIDAD_BASE = 780;
 const VIDA_BASE = 1.15;
 const DANIO_BASE = 12;
@@ -69,6 +105,11 @@ export class Arma {
     this.orbitales = 0;
     this.nivelDanio = 1;
     this.retroceso = 0;
+    this.carga = 0;              // 0..1; a 1 el siguiente disparo va cargado
+    this.silencio = 0;           // tiempo sin disparar
+    this.objetivo = -1;          // handle del enemigo fijado (módulo Buscador)
+    this._etiqueta = undefined;
+    this._etiquetaMascara = -1;
   }
 
   get mascara() {
@@ -116,7 +157,16 @@ export class Arma {
     this.calor = Math.max(0, this.calor - dt * (this.sobrecalentada ? 0.55 : 0.9));
     if (this.sobrecalentada && this.calor <= 0.05) this.sobrecalentada = false;
     this.retroceso = Math.max(0, this.retroceso - dt * 6);
+
+    this.silencio += dt;
+    if (this.silencio > RETARDO_CARGA && !this.sobrecalentada) {
+      const antes = this.carga;
+      this.carga = Math.min(1, this.carga + dt / TIEMPO_CARGA);
+      if (antes < 1 && this.carga >= 1) this.cargaRecienLista = true;
+    }
   }
+
+  get cargado() { return this.carga >= 1; }
 
   get listo() { return this.enfriamiento <= 0 && !this.sobrecalentada; }
 
@@ -128,8 +178,11 @@ export class Arma {
     const m = this.mascara;
     if (this._etiquetaMascara === m && this._etiqueta !== undefined) return this._etiqueta;
     this._etiquetaMascara = m;
+    const combo = comboDe(m);
     if (this.equipados.length === 0) {
       this._etiqueta = 'PULSO BASE';
+    } else if (combo) {
+      this._etiqueta = combo.nombre;
     } else {
       let out = '';
       for (let i = 0; i < this.equipados.length; i++) {
@@ -155,18 +208,37 @@ export function disparar(mundo, jugador, arma, angulo, rng) {
   const escopeta = (m & MOD.ESCOPETA) !== 0;
   const orbital = (m & MOD.ORBITAL) !== 0;
   const perfora = (m & MOD.PERFORANTE) !== 0;
+  const buscador = (m & MOD.BUSCADOR) !== 0;
+  // Un disparo cargado no es "otro arma": es el mismo, amplificado, y cada
+  // módulo amplifica lo suyo. Escopeta cargada = bala maciza; buscador cargado
+  // = tres cabezas; orbital cargado = corona entera de golpe.
+  const cargado = arma.cargado;
 
   let n = escopeta ? 5 : 1;
   let apertura = escopeta ? 0.30 : 0.022;
   let velocidad = VELOCIDAD_BASE * (escopeta ? 0.82 : 1) * (perfora ? 1.22 : 1);
   let vida = VIDA_BASE * (escopeta ? 0.55 : 1) * (perfora ? 1.35 : 1);
   let danio = DANIO_BASE * arma.nivelDanio * (escopeta ? 0.52 : 1) * (perfora ? 1.18 : 1);
+  let escala = 1;
+  let perforaciones = perfora ? 3 : 1;
+  let rebotes = (m & MOD.REBOTE) ? (perfora ? 5 : 4) : 0;
+
+  if (cargado) {
+    danio *= 2.6;
+    velocidad *= 1.22;
+    vida *= 1.5;
+    escala = 1.75;
+    perforaciones += 2;
+    if (rebotes > 0) rebotes += 2;
+    if (escopeta) { n = 7; apertura = 0.075; vida *= 1.9; }   // proyectil macizo
+    if (buscador && !orbital) { n = Math.max(n, 3); apertura = Math.max(apertura, 0.34); }
+  }
 
   if (orbital) {
-    // Los orbitales no se disparan hacia fuera: se acumulan girando.
-    if (arma.orbitales >= (escopeta ? 8 : 5)) return 0;
-    n = escopeta ? 2 : 1;
-    vida = 6.5;
+    const tope = (escopeta ? 8 : 5) + (cargado ? 3 : 0);
+    if (arma.orbitales >= tope) return 0;
+    n = (escopeta ? 2 : 1) * (cargado ? 3 : 1);
+    vida = 6.5 * (cargado ? 1.6 : 1);
     velocidad = 0;
     danio *= 0.85;
   }
@@ -184,44 +256,50 @@ export function disparar(mundo, jugador, arma, angulo, rng) {
     S.px[e] = S.x[e]; S.py[e] = S.y[e];
     S.vx[e] = Math.cos(ang) * velocidad;
     S.vy[e] = Math.sin(ang) * velocidad;
-    S.hw[e] = escopeta ? 5 : 7; S.hh[e] = escopeta ? 4 : 5;
+    S.hw[e] = (escopeta ? 5 : 7) * escala; S.hh[e] = (escopeta ? 4 : 5) * escala;
     S.tipo[e] = orbital ? TIPO.ORBITAL : TIPO.BALA_JUGADOR;
     S.equipo[e] = 0;
     S.dmg[e] = danio;
     S.vida[e] = vida; S.vidaMax[e] = vida;
     S.angulo[e] = ang;
     S.modulos[e] = m;
-    S.escala[e] = 1;
-    S.flags[e] = FLAG.IGNORA_GRAVEDAD;
-    S.golpes[e] = perfora ? 3 : 1;
-    S.c[e] = (m & MOD.REBOTE) ? (perfora ? 5 : 4) : 0;   // rebotes restantes
-    S.objetivo[e] = -1;
+    S.escala[e] = escala;
+    S.flags[e] = FLAG.IGNORA_GRAVEDAD | (cargado ? FLAG.CARGADO : 0);
+    S.golpes[e] = perforaciones;
+    S.c[e] = rebotes;
+    S.a[e] = 0;              // tiempo de vuelo (rampa del buscador)
+    S.marca[e] = 0;
+    S.aturdido[e] = 0;
+    S.objetivo[e] = buscador ? arma.objetivo : -1;
 
     if (orbital) {
       arma.orbitales++;
-      S.a[e] = (arma.orbitales * (TAU / 5)) + rng.spread(0.4);   // fase angular
-      S.b[e] = 78 + rng.spread(10);                              // radio de órbita
-      S.d[e] = 3.4 + rng.spread(0.6);                            // velocidad angular
+      S.a[e] = (arma.orbitales * (TAU / 5)) + rng.spread(0.4);
+      S.b[e] = (78 + rng.spread(10)) * (cargado ? 1.25 : 1);
+      S.d[e] = 3.4 + rng.spread(0.6);
       S.padre[e] = 0;
     }
 
-    // Aspecto según el módulo dominante.
     S.sprite[e] = mundo.spriteProyectil(m);
     S.luzR[e] = 0.45; S.luzG[e] = 0.85; S.luzB[e] = 1;
     if (m & MOD.PERFORANTE) { S.luzR[e] = 1; S.luzG[e] = 0.95; S.luzB[e] = 0.55; }
     if (m & MOD.CADENA) { S.luzR[e] = 0.72; S.luzG[e] = 0.5; S.luzB[e] = 1; }
     if (m & MOD.REBOTE) { S.luzG[e] = 1; S.luzB[e] = 0.75; }
-    S.luzRadio[e] = 110; S.luzInt[e] = 0.75;
+    if (cargado) { S.luzR[e] = Math.min(1, S.luzR[e] + 0.3); S.luzG[e] = Math.min(1, S.luzG[e] + 0.2); }
+    S.luzRadio[e] = 110 * (cargado ? 1.6 : 1); S.luzInt[e] = cargado ? 1.2 : 0.75;
     creados++;
   }
 
-  arma.enfriamiento = arma.cadencia * (escopeta ? 2.6 : 1) * (orbital ? 2.2 : 1);
-  arma.calor = Math.min(1.35, arma.calor + (escopeta ? 0.16 : 0.075));
+  arma.enfriamiento = arma.cadencia * (escopeta ? 2.6 : 1) * (orbital ? 2.2 : 1) * (cargado ? 1.7 : 1);
+  arma.calor = Math.min(1.35, arma.calor + (escopeta ? 0.16 : 0.075) * (cargado ? 1.4 : 1));
   if (arma.calor >= 1.2) arma.sobrecalentada = true;
-  arma.retroceso = 1;
+  arma.retroceso = cargado ? 2.2 : 1;
+  arma.silencio = 0;
+  if (cargado) arma.carga = 0;
+  arma.cargaRecienLista = false;
 
   if (creados > 0) {
-    mundo.eventos.emit(EV.DISPARO, jugador.x, jugador.y, arma.equipados.length, 0);
+    mundo.eventos.emit(EV.DISPARO, jugador.x, jugador.y, arma.equipados.length, cargado ? 1 : 0);
   }
   return creados;
 }
@@ -273,17 +351,22 @@ export function actualizarProyectil(mundo, e, dt) {
     }
   }
 
-  // Buscador: giro suave hacia el objetivo.
+  // Buscador: gira hacia el objetivo fijado y gana fuerza cuanto más lo
+  // persigue. Un disparo que lleva rato detrás de alguien duele más.
   if (m & MOD.BUSCADOR) {
+    S.a[e] += dt;
+    if (S.a[e] < 1.4) S.dmg[e] *= 1 + 0.35 * dt;
+
     let obj = mundo.ent.resolve(S.objetivo[e]);
     if (obj < 0 || mundo.ent.vida[obj] <= 0) {
-      obj = mundo.enemigoMasCercano(S.x[e], S.y[e], 520, -1);
+      obj = mundo.enemigoMasCercano(S.x[e], S.y[e], 560, -1);
       S.objetivo[e] = obj >= 0 ? mundo.ent.handle(obj) : -1;
     }
     if (obj >= 0) {
       const deseado = Math.atan2(S.y[obj] - S.y[e], S.x[obj] - S.x[e]);
       const actual = Math.atan2(S.vy[e], S.vx[e]);
-      const giro = clamp(angleDelta(actual, deseado), -6.5 * dt, 6.5 * dt);
+      const agilidad = (S.flags[e] & FLAG.CARGADO) ? 9 : 6.5;
+      const giro = clamp(angleDelta(actual, deseado), -agilidad * dt, agilidad * dt);
       const vel = Math.hypot(S.vx[e], S.vy[e]) || 1;
       const nuevo = actual + giro;
       S.vx[e] = Math.cos(nuevo) * vel;

@@ -97,21 +97,28 @@ export class Progresion {
       const lista = [];
       const presupuesto = Math.round((3 + dif * 1.35) * (1 + o * 0.32));
       let gastado = 0;
+      // `pareja` fuerza a que salgan de dos en dos: un tejedor solo no tiende
+      // ningun cable y pierde todo su sentido.
       const disponibles = [
         { tipo: TIPOS.DRON, coste: 2, desde: 0 },
         { tipo: TIPOS.RASTREADOR, coste: 2, desde: 0 },
         { tipo: TIPOS.ENJAMBRE, coste: 1, desde: 0 },
         { tipo: TIPOS.VOLADOR, coste: 2, desde: 1 },
         { tipo: TIPOS.BOMBARDERO, coste: 3, desde: 1 },
+        { tipo: TIPOS.DIVISOR, coste: 4, desde: 1 },
+        { tipo: TIPOS.TEJEDOR, coste: 3, desde: 1, pareja: true },
         { tipo: TIPOS.ESCUDO, coste: 4, desde: 2 },
+        { tipo: TIPOS.ESPEJO, coste: 4, desde: 2 },
       ].filter((x) => b >= x.desde);
       let guardia = 0;
       while (gastado < presupuesto && guardia++ < 64) {
         const pick = this.rng.pick(disponibles);
-        if (gastado + pick.coste > presupuesto + 1) break;
-        const elite = dif > 6 && this.rng.bool(0.12);
-        lista.push({ tipo: pick.tipo, elite });
-        gastado += pick.coste * (elite ? 2 : 1);
+        const cuantos = pick.pareja ? 2 : 1;
+        const coste = pick.coste * cuantos;
+        if (gastado + coste > presupuesto + 1) break;
+        const elite = dif > 6 && !pick.pareja && this.rng.bool(0.14);
+        for (let k = 0; k < cuantos; k++) lista.push({ tipo: pick.tipo, elite });
+        gastado += coste * (elite ? 2 : 1);
       }
       if (lista.length === 0) lista.push({ tipo: TIPOS.DRON, elite: false });
       oleadas.push(lista);

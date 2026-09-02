@@ -85,6 +85,10 @@ export class Audio {
       case EV.DISPARO: s.disparo(a | 0, 0, pan); break;
       case EV.IMPACTO: s.impacto(a, pan); break;
       case EV.REBOTE: s.rebote(pan); break;
+      case EV.CRITICO: s.critico(pan); break;
+      case EV.ATURDIMIENTO: s.aturdimiento(pan); break;
+      case EV.REFLEJO: s.reflejo(pan); break;
+      case EV.DIVISION: s.division(pan); break;
       case EV.DANIO_JUGADOR: s.danio(pan); break;
       case EV.MUERTE_ENEMIGO: s.muerteEnemigo(a, pan); break;
       case EV.EXPLOSION: s.explosion(a, pan); break;

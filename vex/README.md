@@ -75,6 +75,48 @@ Núcleo Térmico y El Vacío— y 25 sectores generados por procedimiento, cada 
 cerrado por el **Fragmento Primario**, un jefe de tres fases con dos ojos
 orbitales que son sus puntos débiles.
 
+### Cómo funciona el combate
+
+Tres reglas atraviesan a todos los enemigos y son las que le dan ritmo:
+
+**Aguante.** Además de vida, cada enemigo tiene una postura. El daño acumulado
+la rompe y lo deja **aturdido** casi un segundo, quieto y recibiendo un 60 % más
+de daño. Si le das respiro, la recupera. El combate deja de ser vaciar una barra
+y pasa a ser buscar el momento de romperla.
+
+**Puntos débiles.** Cada tipo tiene un sitio donde duele de verdad: la espalda
+del guardián (×3), el ojo del dron, el núcleo del bombardero. Acertar ahí
+multiplica el daño y rompe el aguante casi el doble de rápido. Cuando estás
+cerca, el punto se marca con un destello tenue para que se aprenda.
+
+**Telegrafía.** Todo ataque comprometido dibuja **su área real** antes de salir:
+una franja para las embestidas, un cono para los abanicos, un círculo para las
+explosiones. La barra de relleno avanza con el temporizador real del ataque, así
+que dice a la vez *dónde* y *cuándo*. Y mientras el enemigo está comprometido,
+**se le puede cortar el ataque con un parry**: queda aturdido y sales ganando el
+intercambio. Un bombardero devuelto sale disparado hacia donde apuntabas y
+explota para el otro bando.
+
+### El bestiario
+
+| Enemigo | Qué te obliga a hacer |
+|---|---|
+| **Dron Centinela** | Fuego de supresión a media distancia: te obliga a moverte |
+| **Rastreador** | Persigue por el suelo, salta huecos y muros y embiste |
+| **Volador Sináptico** | Vuela en onda y se te tira encima si te quedas quieto |
+| **Guardián con Escudo** | Bloquea de frente: hay que rodearlo y darle en la espalda |
+| **Enjambre** | Llena el espacio; hay que limpiarlo rápido |
+| **Bombardero Inestable** | Te expulsa del sitio donde estás; o lo devuelves |
+| **Torreta** | Corta líneas de tiro desde una posición fija |
+| **Tejedor** | Salen de dos en dos y tienden un cable de energía entre ellos: hay que decidir a cuál matas primero |
+| **Espejo** | Te devuelve tus propios disparos salvo en la ventana en la que abre la placa |
+| **Divisor** | Se parte en dos al morir, y otra vez: gestión de ritmo |
+
+**Élites.** No son "el mismo con más vida": cada uno lleva un modificador que
+cambia cómo hay que matarlo, con su color propio. *Blindado* aguanta el daño
+pero se le rompe antes la postura; *Veloz* es rápido y frágil; *Volátil* estalla
+al morir; *Regenerador* se cura si le das respiro.
+
 ### El arma modular
 
 No son seis armas: son seis **modificadores que se acumulan** sobre el mismo
@@ -83,12 +125,21 @@ uno a uno:
 
 | Módulo | Efecto | Ejemplo de combinación |
 |---|---|---|
-| **Perforante** | Atraviesa 3 objetivos, más alcance | + Cadena: el arco eléctrico salta desde cada cuerpo perforado |
-| **Rebote** | Rebota contra la geometría | + Escopeta: una sala cerrada se convierte en una trampa |
-| **Buscador** | Corrige la trayectoria hacia el enemigo más cercano | + Orbital: los nodos esperan girando y salen a por su presa |
-| **Escopeta** | 5 fragmentos en abanico, menos alcance | + Perforante: recupera el alcance perdido |
-| **Orbital** | El disparo queda orbitando y golpea por contacto | + Escopeta: dos nodos por disparo |
-| **Cadena eléctrica** | Cada impacto salta a 2 enemigos cercanos | + Rebote: el arco persigue por toda la sala |
+| **Perforante** | Atraviesa 3 objetivos, más alcance | + Cadena → *Pararrayos*: el arco salta desde cada cuerpo perforado |
+| **Rebote** | Rebota contra la geometría | + Escopeta → *Tormenta de Esquirlas*: una sala cerrada es una trampa |
+| **Buscador** | Fija el objetivo que tienes en la línea de tiro y gana daño cuanto más lo persigue | + Orbital → *Enjambre Cazador*: los nodos esperan girando y salen a por su presa |
+| **Escopeta** | 5 fragmentos en abanico, menos alcance | + Perforante → *Lanza de Fragmentos*: recupera el alcance |
+| **Orbital** | El disparo queda orbitando y golpea por contacto | + Cadena → *Reactor*: anillo que electrifica por contacto |
+| **Cadena eléctrica** | El primer impacto **marca**; el segundo detona la marca y salta a los vecinos | + Rebote → el arco persigue por toda la sala |
+
+Once combinaciones tienen nombre propio y aparecen en pantalla al montarlas.
+
+**Disparo cargado.** La carga sube sola **mientras no disparas**. No hay botón
+nuevo: premia abrir con un golpe fuerte y reposicionarte en vez de mantener el
+gatillo, y encaja con el sobrecalentamiento, que castiga lo contrario. Cargado,
+cada módulo amplifica lo suyo: la escopeta concentra el abanico en un proyectil
+macizo, el orbital despliega la corona entera de golpe, el buscador saca tres
+cabezas y la cadena salta al doble de enemigos.
 
 ### Sensación de juego
 
@@ -97,6 +148,13 @@ distintas en suelo y aire, giro en seco acelerado, hit-stop en los impactos,
 sacudida de cámara por trauma decreciente, squash & stretch con muelle
 amortiguado, estelas de dash, y **tiempo bala** al matar al último enemigo de una
 sala.
+
+El parry no es un botón de emergencia: devuelve proyectiles con más daño hacia
+donde apuntas, corta ataques comprometidos y **te devuelve el dash**, así que
+encadenar parry → dash → disparo cargado es la forma agresiva de jugar.
+
+Los enemigos se empujan entre sí para no apilarse en el mismo píxel: una oleada
+de diez se lee como diez cosas y no como un bulto.
 
 El escenario incluye rampas, plataformas de un solo sentido, cintas
 transportadoras, plataformas móviles con arrastre correcto del jugador, gel con
@@ -203,12 +261,14 @@ El juego trae su propia batería de pruebas, ejecutable en el navegador:
 http://localhost:8000/pruebas/
 ```
 
-Comprueba en 10 grupos: el PRNG (determinismo, uniformidad, chi²), el almacén de
+Comprueba en 12 grupos: el PRNG (determinismo, uniformidad, chi²), el almacén de
 entidades, la generación de salas, el arranque del motor, el **determinismo de la
 simulación** (1800 ticks, dos partidas idénticas comparadas por firma), la
 **grabación y repetición**, las combinaciones de módulos, las tres fases del
-jefe, la síntesis de audio (render offline con `OfflineAudioContext`) y el
-presupuesto de CPU.
+jefe, la síntesis de audio (render offline con `OfflineAudioContext`), los
+**sistemas de enemigos** (aguante, puntos débiles, escudo, espejo, tejedores,
+divisor, élites, parry y separación), los **sistemas del arma** (carga, fijado de
+blanco, marcas de cadena y combos) y el presupuesto de CPU.
 
 Hay además dos bancos de trabajo: `pruebas/render.html` (carga del renderizador)
 y `pruebas/audio.html` (análisis de RMS, pico y espectro de cada efecto).
@@ -222,13 +282,14 @@ Verificado en Chromium 1194 con rasterización por software (SwiftShader), a
 |---|---|
 | Determinismo (misma semilla + mismas entradas) | idéntico en 3600 ticks |
 | Repetición grabada y reproducida | 900 ticks, **0 desajustes** |
-| Simulación | **0,53 ms** por tick con 344 entidades |
-| CPU total del motor por frame | **0,94 ms** (presupuesto: 8 ms) |
+| Simulación | **~1,2 ms** por tick con 319 enemigos activos |
+| CPU total del motor por frame | **1,98 ms** (presupuesto: 8 ms) |
 | Entidades simultáneas | **431** |
 | Partículas vivas en GPU | **10 342** |
 | Draw calls por frame | **3** |
 | Luces por frame / con sombra proyectada | 128 / 6 |
-| Efectos de audio | 20, ninguno mudo, ninguno saturado |
+| Efectos de audio | 24, ninguno mudo, ninguno saturado |
+| Comprobaciones de la batería | **71 / 71** |
 
 > **Nota honesta sobre los 60 fps.** Este entorno de verificación no tiene GPU:
 > todo se rasteriza por software, así que el coste de GPU (relleno del
@@ -281,6 +342,14 @@ si acaso, hay un saneador final que empuja fuera cualquiera que quede dentro.
 **La luz satura en vez de sumar sin límite.** El compositor aplica
 `ambiente + L/(1+0.62·L)` en vez de `ambiente + L`. Sin eso, un bioma con muchas
 luces solapadas se quemaba entero y el bloom lo remataba.
+
+**La separación de enemigos corrige posición, no velocidad.** El primer intento
+sumaba un impulso a la velocidad, y el `approach()` de cada IA lo cancelaba al
+tick siguiente: doce enemigos generados en el mismo punto seguían a 2 px de
+distancia. Corrigiendo la posición directamente —y sacando la fase antes del
+movimiento— la misma prueba pasa de 0 px a 27 px. Además, dos enemigos
+exactamente superpuestos no tienen dirección de empuje definida, así que se usa
+un ángulo derivado del id para que una pila perfecta también se deshaga.
 
 **El jugador es una entidad del ECS como cualquier otra.** La clase `Jugador`
 sólo guarda el estado de control (temporizadores, banderas) y lee y escribe en

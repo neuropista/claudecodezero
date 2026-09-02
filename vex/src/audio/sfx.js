@@ -129,6 +129,65 @@ export class Sfx {
     });
   }
 
+  /** Impacto en punto débil: agudo, corto y con un armónico que destaca. */
+  critico(pan = 0) {
+    if (!this._puedo()) return;
+    const t = this.ctx.currentTime;
+    voz(this.ctx, this.buses.entradaSfx, t, {
+      tipo: 'triangle', freq: v(2100, 2), freqFin: v(3400, 2), glide: 0.05,
+      gan: 0.13, env: { a: 0.001, d: 0.05, s: 0.12, r: 0.09 },
+      filtro: { tipo: 'bandpass', freq: 3000, q: 8 }, pan,
+    });
+    golpeRuido(this.ctx, this.buses.entradaSfx, t, this.buses.ruido, {
+      dur: 0.08, gan: 0.11, tipoFiltro: 'highpass', freq: v(3200, 3), q: 1.1,
+      env: { a: 0.001, d: 0.035, s: 0.1, r: 0.05 }, pan,
+    });
+  }
+
+  /** Rotura de postura: golpe metálico grave con cola. */
+  aturdimiento(pan = 0) {
+    if (!this._puedo()) return;
+    const t = this.ctx.currentTime;
+    this.buses.duck(0.3, 0.25);
+    for (let i = 0; i < 3; i++) {
+      voz(this.ctx, this.buses.entradaSfx, t + i * 0.015, {
+        tipo: 'square', freq: v(190 + i * 70, 1.5), freqFin: v(70, 1.5), glide: 0.3,
+        gan: 0.11 - i * 0.02, env: { a: 0.001, d: 0.1, s: 0.25, r: 0.3 },
+        filtro: { tipo: 'lowpass', freq: 2200, freqFin: 320, dur: 0.35, q: 5 }, pan,
+      });
+    }
+    golpeRuido(this.ctx, this.buses.entradaSfx, t, this.buses.ruidoRosa, {
+      dur: 0.3, gan: 0.13, tipoFiltro: 'bandpass', freq: 900, freqFin: 240, q: 1.4,
+      env: { a: 0.001, d: 0.09, s: 0.3, r: 0.22 }, pan,
+    });
+  }
+
+  /** El espejo devuelve un disparo. */
+  reflejo(pan = 0) {
+    if (!this._puedo()) return;
+    const t = this.ctx.currentTime;
+    voz(this.ctx, this.buses.entradaSfx, t, {
+      tipo: 'sine', freq: v(1500, 3), freqFin: v(2600, 3), glide: 0.07,
+      gan: 0.09, env: { a: 0.001, d: 0.05, s: 0.15, r: 0.12 },
+      filtro: { tipo: 'bandpass', freq: 2400, q: 10 }, pan,
+    });
+  }
+
+  /** Un divisor se parte. */
+  division(pan = 0) {
+    if (!this._puedo()) return;
+    const t = this.ctx.currentTime;
+    golpeRuido(this.ctx, this.buses.entradaSfx, t, this.buses.ruidoRosa, {
+      dur: 0.26, gan: 0.15, tipoFiltro: 'bandpass', freq: v(700, 3), freqFin: v(1900, 3), q: 1.2,
+      env: { a: 0.002, d: 0.08, s: 0.3, r: 0.18 }, pan,
+    });
+    voz(this.ctx, this.buses.entradaSfx, t, {
+      tipo: 'sawtooth', freq: v(320, 2), freqFin: v(560, 2), glide: 0.22,
+      gan: 0.09, env: { a: 0.003, d: 0.1, s: 0.2, r: 0.15 },
+      filtro: { tipo: 'lowpass', freq: 2600, q: 3 }, pan,
+    });
+  }
+
   danio(pan = 0) {
     if (!this._puedo()) return;
     const t = this.ctx.currentTime;

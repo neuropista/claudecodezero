@@ -6,13 +6,16 @@
 //  · Aquí no se asigna memoria en el bucle caliente: todo sale de pools.
 // Cumplir esas tres cosas es lo que hace que la repetición sea exacta.
 
-import { crearAlmacen, MASK, TIPO, FLAG, NOMBRE_ENEMIGO } from './components.js';
+import { crearAlmacen, MASK, TIPO, FLAG, ELITE, NOMBRE_ENEMIGO } from './components.js';
 import { Fisica } from './physics.js';
 import { generarSala, TIPO_SALA } from './level.js';
 import { TAM, T, esSolido } from './tiles.js';
 import { Jugador, ESTADO, P } from './player.js';
-import { Arma, disparar, actualizarProyectil, MOD, LISTA_MODULOS, MAX_EQUIPADOS } from './weapons.js';
-import { crearEnemigo, actualizarEnemigo, dispararEnemigo, bloqueaEscudo, STATS } from './enemies.js';
+import { Arma, disparar, actualizarProyectil, comboDe, MOD, LISTA_MODULOS, MAX_EQUIPADOS } from './weapons.js';
+import {
+  crearEnemigo, actualizarEnemigo, dispararEnemigo, bloqueaEscudo, reflejaEspejo,
+  desgastarAguante, puntoDebil, factorDanio, separarEnemigos, partirDivisor, STATS,
+} from './enemies.js';
 import { crearJefe, actualizarJefe, actualizarOjo, ojosVivos } from './boss.js';
 import { Trampas, crearEscombro, actualizarRigido } from './hazards.js';
 import { crearPickup, actualizarPickup } from './pickups.js';
@@ -30,6 +33,14 @@ export const FASE = {
 };
 
 const MAX_ARCOS = 64;
+
+/** Diferencia angular mínima con signo. Local para no cargar el import. */
+function angleDeltaLocal(a, b) {
+  let d = (b - a) % TAU;
+  if (d > Math.PI) d -= TAU;
+  if (d < -Math.PI) d += TAU;
+  return d;
+}
 const HITSTOP_MAX = 0.30;              // techo duro de congelacion
 const TICKS_RECARGA_HITSTOP = 5;       // minimo entre micro-parones de impacto
 const MAX_TICKS_CONGELADOS = 14;       // garantia: la simulacion siempre avanza
@@ -54,6 +65,7 @@ export class Mundo {
     this.tmpOpciones = { atraviesaUnaVia: false, ignoraRampas: false };
     this.tmpIds = new Int32Array(this.ent.capacity);
     this.tmpVista = new Float32Array(4);
+    this.tmpDebil = new Float32Array(4);   // x, y, radio, multiplicador
 
     // Arcos eléctricos y rayos, sólo para dibujar.
     this.arcos = {
@@ -290,21 +302,41 @@ export class Mundo {
     j.actualizar(dt, input);
     this.arma.actualizar(dt);
 
+    // Fijado de blanco del módulo Buscador: se elige antes de disparar para
+    // que el proyectil nazca ya con objetivo y no dé el primer bandazo.
+    this._fijarObjetivo(input);
+
+    // Aviso de que la carga acaba de completarse.
+    if (this.arma.cargaRecienLista) {
+      this.arma.cargaRecienLista = false;
+      this.eventos.emit(EV.CARGA_LISTA, j.x, j.y, 1, 0);
+      this.fx.cargaLista(j.x, j.y);
+    }
+
     // Disparo.
     if (input.down(BTN.DISPARO) && j.estado !== ESTADO.MUERTO && this.fase === FASE.JUGANDO) {
+      const eraCargado = this.arma.cargado;
       const creados = disparar(this, j, this.arma, input.aim, this.rng);
       if (creados > 0) {
-        this.camara.empujar(input.aim + Math.PI, 3.5 + creados * 0.6);
-        this.camara.sacudir(0.035);
+        this.camara.empujar(input.aim + Math.PI, (eraCargado ? 12 : 3.5) + creados * 0.6);
+        this.camara.sacudir(eraCargado ? 0.18 : 0.035);
+        if (eraCargado) {
+          this.fx.disparoCargado(j.x, j.y, input.aim);
+          this.hitstop(0.035, true);
+        }
       }
     }
     if (input.pressed(BTN.CAMBIO)) {
       this.arma.cicloRapido();
-      this.mostrarCartel(this.arma.etiqueta(), 'CONFIGURACION DE ARMA');
-      this.mensajeT = 1.4;
+      const combo = comboDe(this.arma.mascara);
+      this.mostrarCartel(this.arma.etiqueta(), combo ? combo.efecto : 'CONFIGURACION DE ARMA');
+      this.mensajeT = combo ? 2.4 : 1.4;
     }
 
     this._construirRejilla();
+    // La separación va ANTES de mover: corrige posiciones y deja que cada IA
+    // decida su velocidad partiendo de una formación ya despejada.
+    separarEnemigos(this, dt);
     this._actualizarEntidades(dt);
     this._colisiones(dt);
     this._logicaSala(dt);
@@ -316,6 +348,35 @@ export class Mundo {
       this.eventos.emit(EV.MUERTE_JUGADOR, j.x, j.y, 1, 0);
       this.post.glitch = 1.2;
     }
+  }
+
+  /**
+   * Elige el enemigo fijado: el más cercano a la línea de puntería dentro de un
+   * cono. Sin esto, los proyectiles buscadores elegían el más cercano a ellos y
+   * se iban a por cualquiera menos a por el que estabas mirando.
+   */
+  _fijarObjetivo(input) {
+    const arma = this.arma;
+    if (!arma.tiene(MOD.BUSCADOR)) { arma.objetivo = -1; return; }
+    const S = this.ent;
+    const j = this.jugador;
+    const cx = Math.cos(input.aim), cy = Math.sin(input.aim);
+    const ALCANCE = 640;
+    const n = this.rejillaEnemigos.consultar(j.x + cx * ALCANCE * 0.5, j.y + cy * ALCANCE * 0.5, ALCANCE * 0.75);
+    let mejor = -1, mejorCoste = Infinity;
+    for (let k = 0; k < n; k++) {
+      const e = this.rejillaEnemigos.resultado[k];
+      if (S.alive[e] !== 1 || S.vida[e] <= 0 || S.tipo[e] === TIPO.TORRETA) continue;
+      const dx = S.x[e] - j.x, dy = S.y[e] - j.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > ALCANCE || dist < 1) continue;
+      const desvio = Math.abs(angleDeltaLocal(input.aim, Math.atan2(dy, dx)));
+      if (desvio > 0.62) continue;
+      // Prioriza lo que está en el eje de puntería, no lo que está cerca.
+      const coste = desvio * 420 + dist * 0.35;
+      if (coste < mejorCoste) { mejorCoste = coste; mejor = e; }
+    }
+    arma.objetivo = mejor >= 0 ? S.handle(mejor) : -1;
   }
 
   _construirRejilla() {
@@ -393,7 +454,7 @@ export class Mundo {
       if (r.chocoY === -1) S.vy[e] = 0;
       if (r.enSuelo && r.cintaVel !== 0) S.x[e] += r.cintaVel * dt;
     }
-    if (r.tileDanino && S.tipo[e] !== TIPO.JEFE) this.danarEnemigo(e, 22, S.x[e], S.y[e], 0.4, 0.9, 1);
+    if (r.tileDanino && S.tipo[e] !== TIPO.JEFE) this.danarEnemigo(e, 22, S.x[e], S.y[e], 0.4, 0.9, 1, false);
 
     const sala = this.sala;
     if (S.y[e] > sala.altoPx + 200) this.matarEnemigo(e, false);
@@ -501,6 +562,8 @@ export class Mundo {
       }
     }
 
+    this._cableTejedores();
+
     // Rayo del jefe contra el jugador.
     if (this.laser.activo && j.estado !== ESTADO.MUERTO && j.iframes <= 0) {
       const L = this.laser;
@@ -525,6 +588,29 @@ export class Mundo {
       if (Math.abs(S.y[e] - S.y[p]) > S.hh[e] + S.hh[p]) continue;
       if (S.tipo[e] === TIPO.JEFE && S.golpes[e] > 0) continue;   // invulnerable entre fases
 
+      // El espejo devuelve el disparo convertido en bala enemiga. Se puede
+      // volver a devolver con un parry: ese bucle es intencionado.
+      if (reflejaEspejo(S, e, S.x[p], S.y[p])) {
+        const j = this.jugador;
+        const ang = Math.atan2(j.y - S.y[p], j.x - S.x[p]) + this.rng.spread(0.12);
+        const vel = Math.max(300, Math.hypot(S.vx[p], S.vy[p]) * 0.85);
+        S.vx[p] = Math.cos(ang) * vel;
+        S.vy[p] = Math.sin(ang) * vel;
+        S.equipo[p] = 1;
+        S.tipo[p] = TIPO.BALA_ENEMIGA;
+        S.modulos[p] = 0;
+        S.golpes[p] = 1;
+        S.c[p] = 0;
+        S.dmg[p] = Math.max(8, S.dmg[p] * 0.8);
+        S.flags[p] = FLAG.IGNORA_GRAVEDAD | FLAG.DESTRUIBLE;
+        S.sprite[p] = this.R.idx('bala.enemiga');
+        S.luzR[p] = 1; S.luzG[p] = 0.35; S.luzB[p] = 0.45;
+        S.vida[p] = Math.max(S.vida[p], 2.5);
+        this.eventos.emit(EV.REFLEJO, S.x[p], S.y[p], 1, 0);
+        this.fx.impacto(S.x[p], S.y[p], ang, 0.8, 0.9, 1, 0.7);
+        return;
+      }
+
       if (bloqueaEscudo(S, e, S.x[p], S.y[p])) {
         this.fx.impacto(S.x[p], S.y[p], S.angulo[p], 0.5, 0.85, 1, 0.6);
         this.eventos.emit(EV.IMPACTO, S.x[p], S.y[p], 0.4, 0);
@@ -542,7 +628,10 @@ export class Mundo {
 
       this.danarEnemigo(e, dmg, S.x[p], S.y[p], S.luzR[p], S.luzG[p], S.luzB[p]);
 
-      if (S.modulos[p] & MOD.CADENA) this._cadena(e, S.x[p], S.y[p], dmg * 0.55, 2);
+      if (S.modulos[p] & MOD.CADENA) {
+        const saltos = (S.flags[p] & FLAG.CARGADO) ? 4 : 2;
+        this._cadenaElectrica(e, S.x[p], S.y[p], dmg, saltos);
+      }
 
       S.golpes[p]--;
       if (S.golpes[p] <= 0) {
@@ -566,7 +655,58 @@ export class Mundo {
     this._morirProyectil(p);
   }
 
-  /** Cadena eléctrica: salta a los enemigos cercanos. */
+  /**
+   * Cable de los tejedores: daña al jugador si cruza el segmento que une a la
+   * pareja. Sólo se procesa una vez por pareja (el de handle menor).
+   */
+  _cableTejedores() {
+    const S = this.ent;
+    const j = this.jugador;
+    this.cables = this.cables || { x0: [], y0: [], x1: [], y1: [], n: 0 };
+    this.cables.n = 0;
+    if (!j || j.estado === ESTADO.MUERTO) return;
+    for (let i = 0; i < S.count; i++) {
+      const e = S.dense[i];
+      if (S.alive[e] !== 1 || S.tipo[e] !== TIPO.TEJEDOR) continue;
+      const o = S.resolve(S.enlace[e]);
+      if (o < 0) continue;
+      if (S.handle(e) > S.enlace[e]) continue;   // la pareja ya lo procesó
+      const k = this.cables.n++;
+      this.cables.x0[k] = S.x[e]; this.cables.y0[k] = S.y[e];
+      this.cables.x1[k] = S.x[o]; this.cables.y1[k] = S.y[o];
+      if (S.aturdido[e] > 0 || S.aturdido[o] > 0) continue;
+      // Distancia del jugador al segmento.
+      const ax = S.x[e], ay = S.y[e], bx = S.x[o], by = S.y[o];
+      const dx = bx - ax, dy = by - ay;
+      const len2 = dx * dx + dy * dy;
+      let t = len2 > 0 ? ((j.x - ax) * dx + (j.y - ay) * dy) / len2 : 0;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const px = ax + dx * t - j.x, py = ay + dy * t - j.y;
+      if (px * px + py * py < 22 * 22) this.danarJugador(S.dmg[e], j.x, j.y, ax + dx * t);
+    }
+  }
+
+  /**
+   * Cadena eléctrica con marcas: el primer impacto deja una marca y el segundo
+   * la detona. Así el módulo también sirve contra un objetivo solo, que era su
+   * punto flojo: antes sin multitud no hacía nada visible.
+   */
+  _cadenaElectrica(objetivo, x, y, dmg, saltos) {
+    const S = this.ent;
+    if (S.marca[objetivo] > 0) {
+      S.marca[objetivo] = 0;
+      this.fx.detonacion(S.x[objetivo], S.y[objetivo]);
+      this.eventos.emit(EV.REBOTE, S.x[objetivo], S.y[objetivo], 1, 0);
+      this.danarEnemigo(objetivo, dmg * 0.85, S.x[objetivo], S.y[objetivo], 0.72, 0.5, 1, false);
+      this._cadena(objetivo, S.x[objetivo], S.y[objetivo], dmg * 0.6, saltos);
+    } else {
+      S.marca[objetivo] = 2.5;
+      this.fx.marca(S.x[objetivo], S.y[objetivo]);
+      this._cadena(objetivo, x, y, dmg * 0.5, Math.max(1, saltos - 1));
+    }
+  }
+
+  /** Salto del arco a los enemigos cercanos. */
   _cadena(desde, x, y, dmg, saltos) {
     const S = this.ent;
     let origen = desde;
@@ -574,7 +714,7 @@ export class Mundo {
     for (let s = 0; s < saltos; s++) {
       const sig = this.enemigoMasCercano(ox, oy, 230, origen);
       if (sig < 0) break;
-      this.danarEnemigo(sig, dmg, ox, oy, 0.72, 0.5, 1);
+      this.danarEnemigo(sig, dmg, ox, oy, 0.72, 0.5, 1, false);
       this._arco(ox, oy, S.x[sig], S.y[sig]);
       ox = S.x[sig]; oy = S.y[sig];
       origen = sig;
@@ -591,22 +731,61 @@ export class Mundo {
 
   // ----------------------------------------------------------- daño/vida ---
 
-  danarEnemigo(e, cantidad, ix, iy, r, g, b) {
+  /**
+   * Aplica daño a un enemigo. Devuelve el daño real infligido.
+   *
+   * Aquí es donde el combate deja de ser "vaciar una barra": el impacto puede
+   * ser crítico si acierta el punto débil, se reduce si el enemigo es blindado,
+   * se amplifica si está aturdido, y siempre desgasta su aguante.
+   */
+  danarEnemigo(e, cantidad, ix, iy, r, g, b, directo = true) {
     const S = this.ent;
-    if (S.alive[e] !== 1 || S.vida[e] <= 0) return;
-    S.vida[e] -= cantidad;
+    if (S.alive[e] !== 1 || S.vida[e] <= 0) return 0;
+
+    let dmg = cantidad * factorDanio(S, e);
+    let critico = false;
+    if (directo && puntoDebil(S, e, this.tmpDebil)) {
+      const ddx = ix - this.tmpDebil[0], ddy = iy - this.tmpDebil[1];
+      if (ddx * ddx + ddy * ddy <= this.tmpDebil[2] * this.tmpDebil[2]) {
+        dmg *= this.tmpDebil[3];
+        critico = true;
+      }
+    }
+    if (S.aturdido[e] > 0) dmg *= 1.6;
+
+    S.vida[e] -= dmg;
     S.flash[e] = 1;
     const ang = Math.atan2(iy - S.y[e], ix - S.x[e]);
-    this.fx.impacto(S.x[e], S.y[e], ang, r, g, b, clamp(cantidad / 22, 0.5, 1.6));
-    this.eventos.emit(EV.IMPACTO, S.x[e], S.y[e], clamp(cantidad / 18, 0.4, 1.5), 0);
-    // Empujón proporcional al daño (los jefes no se mueven).
+
+    if (critico) {
+      this.fx.critico(ix, iy, ang);
+      this.eventos.emit(EV.CRITICO, ix, iy, 1, 0);
+      this.camara.sacudir(0.14);
+    } else {
+      this.fx.impacto(S.x[e], S.y[e], ang, r, g, b, clamp(dmg / 22, 0.5, 1.6));
+      this.eventos.emit(EV.IMPACTO, S.x[e], S.y[e], clamp(dmg / 18, 0.4, 1.5), 0);
+    }
+
+    // El aguante se rompe antes con los críticos: apuntar bien acorta el combate.
+    const roto = desgastarAguante(this, e, dmg * (critico ? 1.9 : 1));
+    if (roto) { this.camara.sacudir(0.24); this.hitstop(0.05, true); }
+
     if (S.tipo[e] !== TIPO.JEFE && S.tipo[e] !== TIPO.TORRETA) {
-      const emp = clamp(cantidad * 3.2, 20, 200);
+      const emp = clamp(dmg * 3.2, 20, 220);
       S.vx[e] -= Math.cos(ang) * emp;
       S.vy[e] -= Math.sin(ang) * emp * 0.6;
     }
     if (S.vida[e] <= 0) this.matarEnemigo(e, S.tipo[e] === TIPO.BOMBARDERO);
-    else this.hitstop(0.018);
+    else if (!roto) this.hitstop(0.018);
+    return dmg;
+  }
+
+  /** Golpe de área de un enemigo contra el jugador (pisotón del divisor). */
+  golpeArea(x, y, radio, dmg, origen) {
+    const j = this.jugador;
+    if (!j || j.estado === ESTADO.MUERTO) return;
+    const d = Math.hypot(j.x - x, j.y - y);
+    if (d < radio) this.danarJugador(dmg * (1 - d / radio * 0.5), j.x, j.y, x);
   }
 
   matarEnemigo(e, explota) {
@@ -622,11 +801,20 @@ export class Mundo {
     this.camara.sacudir(0.08 * tam);
     this.hitstop(0.03 * tam, tam > 1.2);
 
-    if (explota) {
+    // Un bombardero devuelto con parry ya no es problema tuyo: revienta para
+    // el otro bando.
+    const parado = (S.flags[e] & FLAG.REFLEJADO) !== 0;
+    const volatil = (S.flags[e] & FLAG.ELITE) !== 0 && S.variante[e] === ELITE.VOLATIL;
+    if (explota || volatil) {
+      const radio = volatil && !explota ? 140 : 130;
       this.fx.explosionGrande(x, y, 1.2);
       this.eventos.emit(EV.EXPLOSION, x, y, 1, 0);
       this.camara.sacudir(0.35);
-      this._explosionRadial(x, y, 120, S.dmg[e]);
+      this._explosionRadial(x, y, radio, S.dmg[e], !parado);
+    }
+    if (tipo === TIPO.DIVISOR) {
+      const crias = partirDivisor(this, e);
+      if (crias > 0) this.eventos.emit(EV.DIVISION, x, y, 1, 0);
     }
 
     if (tipo !== TIPO.TORRETA && tipo !== TIPO.JEFE_OJO) {
@@ -666,7 +854,7 @@ export class Mundo {
     S.kill(e);
   }
 
-  _explosionRadial(x, y, radio, dmg) {
+  _explosionRadial(x, y, radio, dmg, dañaJugador = true) {
     const S = this.ent;
     const n = this.rejillaEnemigos.consultar(x, y, radio);
     for (let k = 0; k < n; k++) {
@@ -674,10 +862,10 @@ export class Mundo {
       if (S.alive[e] !== 1) continue;
       const d = Math.hypot(S.x[e] - x, S.y[e] - y);
       if (d > radio) continue;
-      this.danarEnemigo(e, dmg * (1 - d / radio), x, y, 1, 0.6, 0.25);
+      this.danarEnemigo(e, dmg * (1 - d / radio), x, y, 1, 0.6, 0.25, false);
     }
     const j = this.jugador;
-    if (j.estado !== ESTADO.MUERTO) {
+    if (dañaJugador && j.estado !== ESTADO.MUERTO) {
       const d = Math.hypot(j.x - x, j.y - y);
       if (d < radio) this.danarJugador(dmg * (1 - d / radio), j.x, j.y, x);
     }
@@ -787,7 +975,9 @@ export class Mundo {
     this.camara.sacudir(0.3);
     this.hitstop(0.12, true);
     if (info) {
-      this.mostrarCartel(`MODULO: ${info.nombre.toUpperCase()}`, info.descripcion);
+      const combo = comboDe(this.arma.mascara);
+      this.mostrarCartel(`MODULO: ${info.nombre.toUpperCase()}`,
+        combo ? `${combo.nombre} — ${combo.efecto}` : info.descripcion);
       this.mensajeT = 5.2;
       this.avisoModulo = info;
     }
@@ -990,6 +1180,8 @@ export class Mundo {
       this._mezclar(S.vida[e]);
       this._mezclar(S.estado[e]);
       this._mezclar(S.t1[e]);
+      this._mezclar(S.aguante[e]);
+      this._mezclar(S.aturdido[e]);
     }
     const j = this.jugador;
     this._mezclar(j.x); this._mezclar(j.y);

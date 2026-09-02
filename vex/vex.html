@@ -627,6 +627,7 @@ __def("src/core/events.js", function (exports, __req) {
     EXPLOSION: 14, JEFE_FASE: 15, SALA_LIMPIA: 16, MUERTE_JUGADOR: 17,
     CARGA_LISTA: 18, LASER: 19, CURA: 20, MODULO: 21, VICTORIA: 22,
     RALENTI: 23, TELEGRAFIA: 24, REBOTE: 25,
+    CRITICO: 26, ATURDIMIENTO: 27, REFLEJO: 28, DIVISION: 29,
   };
   
   const EV_NOMBRE = Object.keys(EV);
@@ -2075,6 +2076,128 @@ __def("src/render/spriteart.js", function (exports, __req) {
       halo(ctx, cx, cy, 9, '255,61,110', 0.8);
       ctx.fillStyle = '#ffdfe8';
       ctx.beginPath(); ctx.arc(cx, cy, 3.4, 0, Math.PI * 2); ctx.fill();
+    });
+  
+    // Tejedor: nodo que tiende un cable de energía con su pareja.
+    atlas.addTira('enem.tejedor', 5, 46, 46, (ctx, w, h, i, n) => {
+      const t = (i / n) * Math.PI * 2;
+      const cx = w / 2, cy = h / 2;
+      halo(ctx, cx, cy, 20, '90,255,210', 0.35);
+      // Filamentos que giran.
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(t * 0.6);
+      ctx.strokeStyle = '#5cffcf';
+      ctx.lineCap = 'round';
+      ctx.globalAlpha = 0.75;
+      for (let k = 0; k < 6; k++) {
+        const a = (k / 6) * Math.PI * 2;
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * 9, Math.sin(a) * 9);
+        ctx.lineTo(Math.cos(a) * (17 + Math.sin(t + k) * 3), Math.sin(a) * (17 + Math.sin(t + k) * 3));
+        ctx.stroke();
+      }
+      ctx.restore();
+      // Cuerpo romboidal.
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = grad(ctx, -10, -10, 10, 10, [[0, '#1d4a42'], [1, '#0b201d']]);
+      ctx.fillRect(-9, -9, 18, 18);
+      ctx.strokeStyle = '#3fd7ae'; ctx.lineWidth = 2; ctx.strokeRect(-9, -9, 18, 18);
+      ctx.restore();
+      halo(ctx, cx, cy, 8, '160,255,230', 0.95);
+      ctx.fillStyle = '#e8fff8';
+      ctx.beginPath(); ctx.arc(cx, cy, 3 + Math.sin(t * 2) * 0.6, 0, Math.PI * 2); ctx.fill();
+    });
+  
+    // Espejo (placa puesta): devuelve los disparos que le llegan de frente.
+    atlas.addTira('enem.espejo', 4, 56, 52, (ctx, w, h, i, n) => {
+      const t = (i / n) * Math.PI * 2;
+      const cx = w / 2 - 4, cy = h / 2;
+      halo(ctx, cx, cy, 20, '150,190,255', 0.28);
+      // Cuerpo hexagonal.
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.fillStyle = grad(ctx, -16, -16, 16, 16, [[0, CHASIS_ALTO], [1, CHASIS]]);
+      estrella(ctx, 0, 0, 6, 16, 14, Math.PI / 6);
+      ctx.fill();
+      ctx.strokeStyle = '#5f7fb8'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.restore();
+      // Placa reflectante, montada hacia +x (el sprite se voltea con la mirada).
+      ctx.save();
+      ctx.translate(cx + 6, cy);
+      ctx.shadowColor = '#bfe4ff'; ctx.shadowBlur = 12;
+      const g = ctx.createLinearGradient(0, -20, 8, 20);
+      g.addColorStop(0, 'rgba(220,240,255,0.95)');
+      g.addColorStop(0.45 + 0.12 * Math.sin(t), 'rgba(255,255,255,1)');
+      g.addColorStop(1, 'rgba(150,190,235,0.85)');
+      ctx.strokeStyle = g;
+      ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.arc(-4, 0, 20, -1.05, 1.05); ctx.stroke();
+      ctx.globalAlpha = 0.4; ctx.lineWidth = 12;
+      ctx.beginPath(); ctx.arc(-4, 0, 20, -1.05, 1.05); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = '#8fb4e8';
+      ctx.beginPath(); ctx.arc(cx - 4, cy, 3, 0, Math.PI * 2); ctx.fill();
+    });
+  
+    // Espejo abierto: la placa se retira y deja el núcleo a tiro.
+    atlas.addTira('enem.espejoAbierto', 3, 56, 52, (ctx, w, h, i, n) => {
+      const t = i / (n - 1);
+      const cx = w / 2 - 4, cy = h / 2;
+      halo(ctx, cx, cy, 24, '90,255,150', 0.5);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.fillStyle = grad(ctx, -16, -16, 16, 16, [[0, CHASIS_ALTO], [1, CHASIS]]);
+      estrella(ctx, 0, 0, 6, 16, 14, Math.PI / 6);
+      ctx.fill();
+      ctx.strokeStyle = '#4fa87a'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.restore();
+      // Las dos mitades de la placa, separadas.
+      ctx.save();
+      ctx.translate(cx + 6, cy);
+      ctx.strokeStyle = 'rgba(200,225,255,0.8)';
+      ctx.lineWidth = 5;
+      for (const s2 of [-1, 1]) {
+        ctx.beginPath();
+        ctx.arc(-4, s2 * (7 + t * 9), 20, s2 > 0 ? 0.12 : -1.05, s2 > 0 ? 1.05 : -0.12);
+        ctx.stroke();
+      }
+      ctx.restore();
+      // Núcleo expuesto.
+      halo(ctx, cx, cy, 12, '110,255,170', 0.95);
+      ctx.fillStyle = '#e6fff0';
+      ctx.beginPath(); ctx.arc(cx, cy, 5.5, 0, Math.PI * 2); ctx.fill();
+    });
+  
+    // Divisor: masa que se parte en dos al morir.
+    atlas.addTira('enem.divisor', 4, 52, 48, (ctx, w, h, i, n, r) => {
+      const t = (i / n) * Math.PI * 2;
+      const cx = w / 2, cy = h / 2;
+      halo(ctx, cx, cy, 22, '255,110,190', 0.32);
+      const wob = 1 + Math.sin(t) * 0.06;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(wob, 2 - wob);
+      ctx.fillStyle = grad(ctx, -20, -18, 20, 18, [[0, '#4a1638'], [1, '#1c0714']]);
+      ctx.beginPath(); ctx.ellipse(0, 0, 20, 17, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#ff62be'; ctx.lineWidth = 2.2; ctx.stroke();
+      // Costura por donde se partirá.
+      ctx.strokeStyle = 'rgba(255,150,215,0.55)';
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(0, -17); ctx.lineTo(0, 17); ctx.stroke();
+      ctx.setLineDash([]);
+      // Células internas.
+      for (let k = 0; k < 3; k++) {
+        const a = t + k * 2.1;
+        halo(ctx, Math.cos(a) * 7, Math.sin(a * 1.3) * 5, 6, '255,150,215', 0.7);
+      }
+      ctx.restore();
+      ctx.fillStyle = '#ffd9f0';
+      ctx.beginPath(); ctx.arc(cx, cy - 4, 3, 0, Math.PI * 2); ctx.fill();
     });
   
     // Bombardero: cuerpo esférico inestable.
@@ -5320,6 +5443,65 @@ __def("src/audio/sfx.js", function (exports, __req) {
       });
     }
   
+    /** Impacto en punto débil: agudo, corto y con un armónico que destaca. */
+    critico(pan = 0) {
+      if (!this._puedo()) return;
+      const t = this.ctx.currentTime;
+      voz(this.ctx, this.buses.entradaSfx, t, {
+        tipo: 'triangle', freq: v(2100, 2), freqFin: v(3400, 2), glide: 0.05,
+        gan: 0.13, env: { a: 0.001, d: 0.05, s: 0.12, r: 0.09 },
+        filtro: { tipo: 'bandpass', freq: 3000, q: 8 }, pan,
+      });
+      golpeRuido(this.ctx, this.buses.entradaSfx, t, this.buses.ruido, {
+        dur: 0.08, gan: 0.11, tipoFiltro: 'highpass', freq: v(3200, 3), q: 1.1,
+        env: { a: 0.001, d: 0.035, s: 0.1, r: 0.05 }, pan,
+      });
+    }
+  
+    /** Rotura de postura: golpe metálico grave con cola. */
+    aturdimiento(pan = 0) {
+      if (!this._puedo()) return;
+      const t = this.ctx.currentTime;
+      this.buses.duck(0.3, 0.25);
+      for (let i = 0; i < 3; i++) {
+        voz(this.ctx, this.buses.entradaSfx, t + i * 0.015, {
+          tipo: 'square', freq: v(190 + i * 70, 1.5), freqFin: v(70, 1.5), glide: 0.3,
+          gan: 0.11 - i * 0.02, env: { a: 0.001, d: 0.1, s: 0.25, r: 0.3 },
+          filtro: { tipo: 'lowpass', freq: 2200, freqFin: 320, dur: 0.35, q: 5 }, pan,
+        });
+      }
+      golpeRuido(this.ctx, this.buses.entradaSfx, t, this.buses.ruidoRosa, {
+        dur: 0.3, gan: 0.13, tipoFiltro: 'bandpass', freq: 900, freqFin: 240, q: 1.4,
+        env: { a: 0.001, d: 0.09, s: 0.3, r: 0.22 }, pan,
+      });
+    }
+  
+    /** El espejo devuelve un disparo. */
+    reflejo(pan = 0) {
+      if (!this._puedo()) return;
+      const t = this.ctx.currentTime;
+      voz(this.ctx, this.buses.entradaSfx, t, {
+        tipo: 'sine', freq: v(1500, 3), freqFin: v(2600, 3), glide: 0.07,
+        gan: 0.09, env: { a: 0.001, d: 0.05, s: 0.15, r: 0.12 },
+        filtro: { tipo: 'bandpass', freq: 2400, q: 10 }, pan,
+      });
+    }
+  
+    /** Un divisor se parte. */
+    division(pan = 0) {
+      if (!this._puedo()) return;
+      const t = this.ctx.currentTime;
+      golpeRuido(this.ctx, this.buses.entradaSfx, t, this.buses.ruidoRosa, {
+        dur: 0.26, gan: 0.15, tipoFiltro: 'bandpass', freq: v(700, 3), freqFin: v(1900, 3), q: 1.2,
+        env: { a: 0.002, d: 0.08, s: 0.3, r: 0.18 }, pan,
+      });
+      voz(this.ctx, this.buses.entradaSfx, t, {
+        tipo: 'sawtooth', freq: v(320, 2), freqFin: v(560, 2), glide: 0.22,
+        gan: 0.09, env: { a: 0.003, d: 0.1, s: 0.2, r: 0.15 },
+        filtro: { tipo: 'lowpass', freq: 2600, q: 3 }, pan,
+      });
+    }
+  
     danio(pan = 0) {
       if (!this._puedo()) return;
       const t = this.ctx.currentTime;
@@ -5909,6 +6091,10 @@ __def("src/audio/audio.js", function (exports, __req) {
         case EV.DISPARO: s.disparo(a | 0, 0, pan); break;
         case EV.IMPACTO: s.impacto(a, pan); break;
         case EV.REBOTE: s.rebote(pan); break;
+        case EV.CRITICO: s.critico(pan); break;
+        case EV.ATURDIMIENTO: s.aturdimiento(pan); break;
+        case EV.REFLEJO: s.reflejo(pan); break;
+        case EV.DIVISION: s.division(pan); break;
         case EV.DANIO_JUGADOR: s.danio(pan); break;
         case EV.MUERTE_ENEMIGO: s.muerteEnemigo(a, pan); break;
         case EV.EXPLOSION: s.explosion(a, pan); break;
@@ -6109,6 +6295,16 @@ __def("src/game/components.js", function (exports, __req) {
     iframes: 'f32',
     flash: 'f32',
   
+    // Aguante: el daño acumulado rompe la postura del enemigo y lo deja aturdido
+    // y vulnerable. Es lo que convierte disparar en algo con ritmo en vez de en
+    // vaciar una barra de vida.
+    aguante: 'f32', aguanteMax: 'f32',
+    aturdido: 'f32',
+    sinGolpe: 'f32',     // tiempo sin recibir daño (regeneración de aguante)
+    marca: 'f32',        // marca de la cadena eléctrica, lista para detonar
+    variante: 'u8',      // modificador de élite / nivel del divisor
+    enlace: 'i32',       // handle del compañero enlazado (tejedor)
+  
     sprite: 'u16',
     cuadros: 'u8',
     anim: 'f32',
@@ -6161,13 +6357,27 @@ __def("src/game/components.js", function (exports, __req) {
     ESCOMBRO: 15,
     ORBITAL: 16,
     ONDA: 17,
+    TEJEDOR: 18,
+    ESPEJO: 19,
+    DIVISOR: 20,
   };
   
   const NOMBRE_ENEMIGO = {
     3: 'Dron Centinela', 4: 'Rastreador', 5: 'Volador Sinaptico',
     6: 'Guardian con Escudo', 7: 'Enjambre', 8: 'Bombardero Inestable',
     9: 'Torreta', 10: 'FRAGMENTO PRIMARIO',
+    18: 'Tejedor', 19: 'Espejo', 20: 'Divisor',
   };
+  
+  /** Modificadores de élite. Cada uno cambia cómo hay que matarlo, no sólo cuánto. */
+  const ELITE = {
+    BLINDADO: 0,      // reduce el daño recibido, pero se le rompe antes la postura
+    VELOZ: 1,         // rápido y pequeño, aguanta poco
+    VOLATIL: 2,       // estalla al morir
+    REGENERADOR: 3,   // se cura si le dejas respirar
+  };
+  
+  const NOMBRE_ELITE = ['BLINDADO', 'VELOZ', 'VOLATIL', 'REGENERADOR'];
   
   const FLAG = {
     MIRA_DERECHA: 1 << 0,
@@ -6181,6 +6391,9 @@ __def("src/game/components.js", function (exports, __req) {
     EN_AGUA: 1 << 8,
     ESCUDO_FRONTAL: 1 << 9,
     REFLEJADO: 1 << 10,
+    PARRYABLE: 1 << 11,     // ataque comprometido: se puede devolver con parry
+    CARGADO: 1 << 12,       // proyectil potenciado por la carga del arma
+    ABIERTO: 1 << 13,       // el espejo tiene la placa retirada: es vulnerable
   };
   
   const CAPACIDAD = 3072;
@@ -6189,7 +6402,7 @@ __def("src/game/components.js", function (exports, __req) {
     return new EntityStore(CAPACIDAD, ESQUEMA);
   }
   
-  Object.assign(exports, { ESQUEMA, MASK, TIPO, NOMBRE_ENEMIGO, FLAG, CAPACIDAD, crearAlmacen });
+  Object.assign(exports, { ESQUEMA, MASK, TIPO, NOMBRE_ENEMIGO, ELITE, NOMBRE_ELITE, FLAG, CAPACIDAD, crearAlmacen });
 });
 
 // ==================================================================
@@ -7417,17 +7630,27 @@ __def("src/game/player.js", function (exports, __req) {
   
     // ------------------------------------------------------------- parry -----
   
+    /**
+     * Ventana de parry. Hace dos cosas a la vez:
+     *  · devuelve los proyectiles enemigos cercanos, con más daño y hacia donde
+     *    estés apuntando;
+     *  · corta en seco cualquier ataque comprometido (embestidas, pisotones, la
+     *    mecha del bombardero) y deja al enemigo aturdido.
+     * Lo segundo es lo que convierte el parry en una herramienta ofensiva y no
+     * en un botón de emergencia.
+     */
     _resolverParry() {
       const M = this.mundo;
       const S = M.ent;
       let reflejados = 0;
+      let parados = 0;
+  
       for (let i = 0; i < S.count; i++) {
         const e = S.dense[i];
         if (S.alive[e] !== 1) continue;
         if (S.tipo[e] !== TIPO.BALA_ENEMIGA) continue;
         const dx = S.x[e] - this.x, dy = S.y[e] - this.y;
         if (dx * dx + dy * dy > P.PARRY_RADIO * P.PARRY_RADIO) continue;
-        // Reflejar: cambia de equipo, dobla daño y sale hacia donde apuntas.
         const vel = Math.hypot(S.vx[e], S.vy[e]) * 1.55 + 220;
         const ang = this.aim;
         S.vx[e] = Math.cos(ang) * vel;
@@ -7441,15 +7664,52 @@ __def("src/game/player.js", function (exports, __req) {
         S.luzR[e] = 1; S.luzG[e] = 0.5; S.luzB[e] = 0.95;
         reflejados++;
       }
-      if (reflejados > 0) {
+  
+      // Ataques comprometidos al alcance.
+      const radio = P.PARRY_RADIO * 1.55;
+      const n = M.rejillaEnemigos.consultar(this.x, this.y, radio + 40);
+      for (let k = 0; k < n; k++) {
+        const e = M.rejillaEnemigos.resultado[k];
+        if (S.alive[e] !== 1 || (S.flags[e] & FLAG.PARRYABLE) === 0) continue;
+        const dx = S.x[e] - this.x, dy = S.y[e] - this.y;
+        const alcance = radio + S.hw[e];
+        if (dx * dx + dy * dy > alcance * alcance) continue;
+  
+        S.flags[e] &= ~FLAG.PARRYABLE;
+        S.estado[e] = 0;
+        S.t2[e] = 0;
+        S.aturdido[e] = 1.35;
+        S.aguante[e] = S.aguanteMax[e];
+        const dir = Math.atan2(dy, dx);
+        S.vx[e] = Math.cos(dir) * 420;
+        S.vy[e] = Math.sin(dir) * 420 - 120;
+        S.flash[e] = 1;
+  
+        // Un bombardero devuelto sale disparado hacia donde apuntas y ya no te
+        // hace daño a ti: pasa a ser munición.
+        if (S.tipo[e] === TIPO.BOMBARDERO) {
+          S.flags[e] |= FLAG.REFLEJADO;
+          S.aturdido[e] = 0;
+          S.estado[e] = 1;
+          S.t2[e] = 0.85;
+          S.vx[e] = Math.cos(this.aim) * 900;
+          S.vy[e] = Math.sin(this.aim) * 900;
+        }
+        parados++;
+      }
+  
+      if (reflejados > 0 || parados > 0) {
         this.parryT = 0;
         this.parryExito = 0.35;
-        this.iframes = Math.max(this.iframes, 0.28);
-        M.eventos.emit(EV.PARRY, this.x, this.y, 1, reflejados);
-        M.fx.parry(this.x, this.y, reflejados);
-        M.hitstop(0.085, true);
-        M.camara.sacudir(0.28);
-        M.energiaParry(reflejados);
+        this.iframes = Math.max(this.iframes, 0.3);
+        this.dashDisponible = true;
+        this.dashCd = 0;
+        M.eventos.emit(EV.PARRY, this.x, this.y, 1, reflejados + parados);
+        if (parados > 0) M.fx.parryMelee(this.x, this.y);
+        else M.fx.parry(this.x, this.y, reflejados);
+        M.hitstop(parados > 0 ? 0.13 : 0.085, true);
+        M.camara.sacudir(parados > 0 ? 0.45 : 0.28);
+        M.energiaParry(reflejados + parados * 2);
       }
     }
   
@@ -7584,6 +7844,42 @@ __def("src/game/weapons.js", function (exports, __req) {
   
   const MAX_EQUIPADOS = 3;
   
+  /**
+   * Combinaciones con nombre. No cambian las reglas —los módulos ya se acumulan
+   * solos— pero le ponen nombre a lo que el jugador acaba de descubrir, que es la
+   * diferencia entre "llevo tres iconos" y "llevo la Tormenta de Esquirlas".
+   */
+  const COMBOS = [
+    { bits: MOD.PERFORANTE | MOD.REBOTE | MOD.CADENA, nombre: 'TORMENTA ESTATICA', efecto: 'Atraviesa, rebota y electrifica todo lo que toca' },
+    { bits: MOD.ESCOPETA | MOD.BUSCADOR | MOD.CADENA, nombre: 'JAURIA', efecto: 'Cinco fragmentos que buscan y encadenan' },
+    { bits: MOD.PERFORANTE | MOD.REBOTE, nombre: 'LANZA RICOCHETE', efecto: 'Una lanza que atraviesa y sigue viva al rebotar' },
+    { bits: MOD.ESCOPETA | MOD.REBOTE, nombre: 'TORMENTA DE ESQUIRLAS', efecto: 'Convierte una sala cerrada en una trampa' },
+    { bits: MOD.ORBITAL | MOD.BUSCADOR, nombre: 'ENJAMBRE CAZADOR', efecto: 'Nodos que esperan girando y salen a por su presa' },
+    { bits: MOD.PERFORANTE | MOD.CADENA, nombre: 'PARARRAYOS', efecto: 'El arco salta desde cada cuerpo perforado' },
+    { bits: MOD.ESCOPETA | MOD.PERFORANTE, nombre: 'LANZA DE FRAGMENTOS', efecto: 'Abanico que recupera el alcance perdido' },
+    { bits: MOD.ORBITAL | MOD.CADENA, nombre: 'REACTOR', efecto: 'Anillo de nodos que electrifica por contacto' },
+    { bits: MOD.BUSCADOR | MOD.REBOTE, nombre: 'AVISPA LOCA', efecto: 'Corrige tras cada rebote: no suelta al objetivo' },
+    { bits: MOD.ORBITAL | MOD.ESCOPETA, nombre: 'CORONA', efecto: 'Dos nodos por disparo, muralla alrededor' },
+    { bits: MOD.BUSCADOR | MOD.CADENA, nombre: 'CONDUCTOR', efecto: 'Marca al objetivo y detona el arco al reimpactar' },
+  ];
+  
+  /** Devuelve el combo con nombre que mejor describe una máscara, o null. */
+  function comboDe(mascara) {
+    let mejor = null, mejorBits = 0;
+    for (const c of COMBOS) {
+      if ((mascara & c.bits) !== c.bits) continue;
+      let n = 0;
+      for (let b = c.bits; b; b >>= 1) n += b & 1;
+      if (n > mejorBits) { mejor = c; mejorBits = n; }
+    }
+    return mejor;
+  }
+  
+  // Carga: se acumula mientras NO disparas. Premia las ráfagas con criterio en
+  // vez de mantener el gatillo, y no necesita ningún botón nuevo.
+  const RETARDO_CARGA = 0.28;    // silencio mínimo antes de empezar a cargar
+  const TIEMPO_CARGA = 0.82;     // de 0 a listo, una vez empezado
+  
   const VELOCIDAD_BASE = 780;
   const VIDA_BASE = 1.15;
   const DANIO_BASE = 12;
@@ -7604,6 +7900,11 @@ __def("src/game/weapons.js", function (exports, __req) {
       this.orbitales = 0;
       this.nivelDanio = 1;
       this.retroceso = 0;
+      this.carga = 0;              // 0..1; a 1 el siguiente disparo va cargado
+      this.silencio = 0;           // tiempo sin disparar
+      this.objetivo = -1;          // handle del enemigo fijado (módulo Buscador)
+      this._etiqueta = undefined;
+      this._etiquetaMascara = -1;
     }
   
     get mascara() {
@@ -7651,7 +7952,16 @@ __def("src/game/weapons.js", function (exports, __req) {
       this.calor = Math.max(0, this.calor - dt * (this.sobrecalentada ? 0.55 : 0.9));
       if (this.sobrecalentada && this.calor <= 0.05) this.sobrecalentada = false;
       this.retroceso = Math.max(0, this.retroceso - dt * 6);
+  
+      this.silencio += dt;
+      if (this.silencio > RETARDO_CARGA && !this.sobrecalentada) {
+        const antes = this.carga;
+        this.carga = Math.min(1, this.carga + dt / TIEMPO_CARGA);
+        if (antes < 1 && this.carga >= 1) this.cargaRecienLista = true;
+      }
     }
+  
+    get cargado() { return this.carga >= 1; }
   
     get listo() { return this.enfriamiento <= 0 && !this.sobrecalentada; }
   
@@ -7663,8 +7973,11 @@ __def("src/game/weapons.js", function (exports, __req) {
       const m = this.mascara;
       if (this._etiquetaMascara === m && this._etiqueta !== undefined) return this._etiqueta;
       this._etiquetaMascara = m;
+      const combo = comboDe(m);
       if (this.equipados.length === 0) {
         this._etiqueta = 'PULSO BASE';
+      } else if (combo) {
+        this._etiqueta = combo.nombre;
       } else {
         let out = '';
         for (let i = 0; i < this.equipados.length; i++) {
@@ -7690,18 +8003,37 @@ __def("src/game/weapons.js", function (exports, __req) {
     const escopeta = (m & MOD.ESCOPETA) !== 0;
     const orbital = (m & MOD.ORBITAL) !== 0;
     const perfora = (m & MOD.PERFORANTE) !== 0;
+    const buscador = (m & MOD.BUSCADOR) !== 0;
+    // Un disparo cargado no es "otro arma": es el mismo, amplificado, y cada
+    // módulo amplifica lo suyo. Escopeta cargada = bala maciza; buscador cargado
+    // = tres cabezas; orbital cargado = corona entera de golpe.
+    const cargado = arma.cargado;
   
     let n = escopeta ? 5 : 1;
     let apertura = escopeta ? 0.30 : 0.022;
     let velocidad = VELOCIDAD_BASE * (escopeta ? 0.82 : 1) * (perfora ? 1.22 : 1);
     let vida = VIDA_BASE * (escopeta ? 0.55 : 1) * (perfora ? 1.35 : 1);
     let danio = DANIO_BASE * arma.nivelDanio * (escopeta ? 0.52 : 1) * (perfora ? 1.18 : 1);
+    let escala = 1;
+    let perforaciones = perfora ? 3 : 1;
+    let rebotes = (m & MOD.REBOTE) ? (perfora ? 5 : 4) : 0;
+  
+    if (cargado) {
+      danio *= 2.6;
+      velocidad *= 1.22;
+      vida *= 1.5;
+      escala = 1.75;
+      perforaciones += 2;
+      if (rebotes > 0) rebotes += 2;
+      if (escopeta) { n = 7; apertura = 0.075; vida *= 1.9; }   // proyectil macizo
+      if (buscador && !orbital) { n = Math.max(n, 3); apertura = Math.max(apertura, 0.34); }
+    }
   
     if (orbital) {
-      // Los orbitales no se disparan hacia fuera: se acumulan girando.
-      if (arma.orbitales >= (escopeta ? 8 : 5)) return 0;
-      n = escopeta ? 2 : 1;
-      vida = 6.5;
+      const tope = (escopeta ? 8 : 5) + (cargado ? 3 : 0);
+      if (arma.orbitales >= tope) return 0;
+      n = (escopeta ? 2 : 1) * (cargado ? 3 : 1);
+      vida = 6.5 * (cargado ? 1.6 : 1);
       velocidad = 0;
       danio *= 0.85;
     }
@@ -7719,44 +8051,50 @@ __def("src/game/weapons.js", function (exports, __req) {
       S.px[e] = S.x[e]; S.py[e] = S.y[e];
       S.vx[e] = Math.cos(ang) * velocidad;
       S.vy[e] = Math.sin(ang) * velocidad;
-      S.hw[e] = escopeta ? 5 : 7; S.hh[e] = escopeta ? 4 : 5;
+      S.hw[e] = (escopeta ? 5 : 7) * escala; S.hh[e] = (escopeta ? 4 : 5) * escala;
       S.tipo[e] = orbital ? TIPO.ORBITAL : TIPO.BALA_JUGADOR;
       S.equipo[e] = 0;
       S.dmg[e] = danio;
       S.vida[e] = vida; S.vidaMax[e] = vida;
       S.angulo[e] = ang;
       S.modulos[e] = m;
-      S.escala[e] = 1;
-      S.flags[e] = FLAG.IGNORA_GRAVEDAD;
-      S.golpes[e] = perfora ? 3 : 1;
-      S.c[e] = (m & MOD.REBOTE) ? (perfora ? 5 : 4) : 0;   // rebotes restantes
-      S.objetivo[e] = -1;
+      S.escala[e] = escala;
+      S.flags[e] = FLAG.IGNORA_GRAVEDAD | (cargado ? FLAG.CARGADO : 0);
+      S.golpes[e] = perforaciones;
+      S.c[e] = rebotes;
+      S.a[e] = 0;              // tiempo de vuelo (rampa del buscador)
+      S.marca[e] = 0;
+      S.aturdido[e] = 0;
+      S.objetivo[e] = buscador ? arma.objetivo : -1;
   
       if (orbital) {
         arma.orbitales++;
-        S.a[e] = (arma.orbitales * (TAU / 5)) + rng.spread(0.4);   // fase angular
-        S.b[e] = 78 + rng.spread(10);                              // radio de órbita
-        S.d[e] = 3.4 + rng.spread(0.6);                            // velocidad angular
+        S.a[e] = (arma.orbitales * (TAU / 5)) + rng.spread(0.4);
+        S.b[e] = (78 + rng.spread(10)) * (cargado ? 1.25 : 1);
+        S.d[e] = 3.4 + rng.spread(0.6);
         S.padre[e] = 0;
       }
   
-      // Aspecto según el módulo dominante.
       S.sprite[e] = mundo.spriteProyectil(m);
       S.luzR[e] = 0.45; S.luzG[e] = 0.85; S.luzB[e] = 1;
       if (m & MOD.PERFORANTE) { S.luzR[e] = 1; S.luzG[e] = 0.95; S.luzB[e] = 0.55; }
       if (m & MOD.CADENA) { S.luzR[e] = 0.72; S.luzG[e] = 0.5; S.luzB[e] = 1; }
       if (m & MOD.REBOTE) { S.luzG[e] = 1; S.luzB[e] = 0.75; }
-      S.luzRadio[e] = 110; S.luzInt[e] = 0.75;
+      if (cargado) { S.luzR[e] = Math.min(1, S.luzR[e] + 0.3); S.luzG[e] = Math.min(1, S.luzG[e] + 0.2); }
+      S.luzRadio[e] = 110 * (cargado ? 1.6 : 1); S.luzInt[e] = cargado ? 1.2 : 0.75;
       creados++;
     }
   
-    arma.enfriamiento = arma.cadencia * (escopeta ? 2.6 : 1) * (orbital ? 2.2 : 1);
-    arma.calor = Math.min(1.35, arma.calor + (escopeta ? 0.16 : 0.075));
+    arma.enfriamiento = arma.cadencia * (escopeta ? 2.6 : 1) * (orbital ? 2.2 : 1) * (cargado ? 1.7 : 1);
+    arma.calor = Math.min(1.35, arma.calor + (escopeta ? 0.16 : 0.075) * (cargado ? 1.4 : 1));
     if (arma.calor >= 1.2) arma.sobrecalentada = true;
-    arma.retroceso = 1;
+    arma.retroceso = cargado ? 2.2 : 1;
+    arma.silencio = 0;
+    if (cargado) arma.carga = 0;
+    arma.cargaRecienLista = false;
   
     if (creados > 0) {
-      mundo.eventos.emit(EV.DISPARO, jugador.x, jugador.y, arma.equipados.length, 0);
+      mundo.eventos.emit(EV.DISPARO, jugador.x, jugador.y, arma.equipados.length, cargado ? 1 : 0);
     }
     return creados;
   }
@@ -7808,17 +8146,22 @@ __def("src/game/weapons.js", function (exports, __req) {
       }
     }
   
-    // Buscador: giro suave hacia el objetivo.
+    // Buscador: gira hacia el objetivo fijado y gana fuerza cuanto más lo
+    // persigue. Un disparo que lleva rato detrás de alguien duele más.
     if (m & MOD.BUSCADOR) {
+      S.a[e] += dt;
+      if (S.a[e] < 1.4) S.dmg[e] *= 1 + 0.35 * dt;
+  
       let obj = mundo.ent.resolve(S.objetivo[e]);
       if (obj < 0 || mundo.ent.vida[obj] <= 0) {
-        obj = mundo.enemigoMasCercano(S.x[e], S.y[e], 520, -1);
+        obj = mundo.enemigoMasCercano(S.x[e], S.y[e], 560, -1);
         S.objetivo[e] = obj >= 0 ? mundo.ent.handle(obj) : -1;
       }
       if (obj >= 0) {
         const deseado = Math.atan2(S.y[obj] - S.y[e], S.x[obj] - S.x[e]);
         const actual = Math.atan2(S.vy[e], S.vx[e]);
-        const giro = clamp(angleDelta(actual, deseado), -6.5 * dt, 6.5 * dt);
+        const agilidad = (S.flags[e] & FLAG.CARGADO) ? 9 : 6.5;
+        const giro = clamp(angleDelta(actual, deseado), -agilidad * dt, agilidad * dt);
         const vel = Math.hypot(S.vx[e], S.vy[e]) || 1;
         const nuevo = actual + giro;
         S.vx[e] = Math.cos(nuevo) * vel;
@@ -7830,7 +8173,7 @@ __def("src/game/weapons.js", function (exports, __req) {
     return true;
   }
   
-  Object.assign(exports, { MOD, LISTA_MODULOS, MAX_EQUIPADOS, Arma, disparar, perfilSonido, actualizarProyectil });
+  Object.assign(exports, { MOD, LISTA_MODULOS, MAX_EQUIPADOS, COMBOS, comboDe, Arma, disparar, perfilSonido, actualizarProyectil });
 });
 
 // ==================================================================
@@ -7839,48 +8182,120 @@ __def("src/game/weapons.js", function (exports, __req) {
 __def("src/game/enemies.js", function (exports, __req) {
   // enemies.js — Bestiario y su IA.
   //
-  // Cada tipo tiene un rol táctico distinto para que las salas se lean de un
-  // vistazo: el dron te obliga a moverte, el rastreador te empuja hacia arriba,
-  // el guardián te obliga a rodear, el bombardero a soltar el sitio donde estás.
+  // Cada tipo plantea un problema táctico distinto, no sólo una barra de vida:
+  //   dron        te obliga a moverte en horizontal
+  //   rastreador  te empuja hacia arriba y castiga quedarte en el suelo
+  //   volador     castiga quedarte quieto
+  //   escudo      te obliga a rodearlo (su espalda es su punto débil)
+  //   enjambre    llena el espacio y te obliga a limpiar rápido
+  //   bombardero  te expulsa del sitio donde estás
+  //   torreta     corta líneas de tiro
+  //   tejedor     tiende un cable entre dos: hay que decidir a cuál matas antes
+  //   espejo      te devuelve tus propios disparos salvo en su ventana abierta
+  //   divisor     se multiplica: obliga a gestionar el ritmo de la sala
+  //
+  // Tres sistemas transversales dan el ritmo del combate:
+  //   · AGUANTE: el daño acumulado rompe la postura y deja al enemigo aturdido
+  //     y vulnerable. Disparar tiene ritmo en vez de ser vaciar una barra.
+  //   · PUNTOS DÉBILES: acertar donde toca multiplica el daño. Premia apuntar.
+  //   · TELEGRAFÍA: todo ataque comprometido dibuja su área real antes de salir,
+  //     y mientras está comprometido se puede devolver con un parry.
   
-  const { MASK, TIPO, FLAG } = __req("src/game/components.js");
+  const { MASK, TIPO, FLAG, ELITE } = __req("src/game/components.js");
   const { EV } = __req("src/core/events.js");
   const { clamp, approach, sign, angleDelta, TAU } = __req("src/core/math.js");
   const { P } = __req("src/game/player.js");
   
+  /**
+   * `debil` está en coordenadas locales: ox se refleja con la orientación.
+   * `aguante` es cuánto daño hay que meterle seguido para romperle la postura.
+   */
   const STATS = {
-    [TIPO.DRON]: { vida: 34, dmg: 10, hw: 17, hh: 17, vel: 132, sprite: 'enem.dron.0', cuadros: 6, aire: true, valor: 1 },
-    [TIPO.RASTREADOR]: { vida: 52, dmg: 14, hw: 20, hh: 16, vel: 190, sprite: 'enem.rastreador.0', cuadros: 6, aire: false, valor: 1 },
-    [TIPO.VOLADOR]: { vida: 28, dmg: 12, hw: 18, hh: 14, vel: 205, sprite: 'enem.volador.0', cuadros: 6, aire: true, valor: 1 },
-    [TIPO.ESCUDO]: { vida: 96, dmg: 16, hw: 22, hh: 22, vel: 92, sprite: 'enem.escudo.0', cuadros: 4, aire: false, valor: 2 },
-    [TIPO.ENJAMBRE]: { vida: 10, dmg: 7, hw: 8, hh: 8, vel: 265, sprite: 'enem.enjambre.0', cuadros: 4, aire: true, valor: 0 },
-    [TIPO.BOMBARDERO]: { vida: 40, dmg: 26, hw: 18, hh: 18, vel: 118, sprite: 'enem.bombardero.0', cuadros: 5, aire: true, valor: 2 },
-    [TIPO.TORRETA]: { vida: 60, dmg: 12, hw: 20, hh: 18, vel: 0, sprite: 'enem.torreta.0', cuadros: 4, aire: false, valor: 1 },
+    [TIPO.DRON]: {
+      vida: 34, dmg: 10, hw: 17, hh: 17, vel: 132, sprite: 'enem.dron.0', cuadros: 6,
+      aire: true, valor: 1, aguante: 30, debil: { ox: 0, oy: 0, r: 9, mult: 2.2 },
+    },
+    [TIPO.RASTREADOR]: {
+      vida: 52, dmg: 14, hw: 20, hh: 16, vel: 190, sprite: 'enem.rastreador.0', cuadros: 6,
+      aire: false, valor: 1, aguante: 44, debil: { ox: -16, oy: -6, r: 11, mult: 2.0 },
+    },
+    [TIPO.VOLADOR]: {
+      vida: 28, dmg: 12, hw: 18, hh: 14, vel: 205, sprite: 'enem.volador.0', cuadros: 6,
+      aire: true, valor: 1, aguante: 22, debil: { ox: 0, oy: -2, r: 8, mult: 2.0 },
+    },
+    [TIPO.ESCUDO]: {
+      vida: 96, dmg: 16, hw: 22, hh: 22, vel: 92, sprite: 'enem.escudo.0', cuadros: 4,
+      aire: false, valor: 2, aguante: 88, debil: { ox: -20, oy: 0, r: 15, mult: 3.0 },
+    },
+    [TIPO.ENJAMBRE]: {
+      vida: 10, dmg: 7, hw: 8, hh: 8, vel: 265, sprite: 'enem.enjambre.0', cuadros: 4,
+      aire: true, valor: 0, aguante: 8, debil: null,
+    },
+    [TIPO.BOMBARDERO]: {
+      vida: 40, dmg: 26, hw: 18, hh: 18, vel: 118, sprite: 'enem.bombardero.0', cuadros: 5,
+      aire: true, valor: 2, aguante: 34, debil: { ox: 0, oy: 0, r: 10, mult: 2.5 },
+    },
+    [TIPO.TORRETA]: {
+      vida: 60, dmg: 12, hw: 20, hh: 18, vel: 0, sprite: 'enem.torreta.0', cuadros: 4,
+      aire: false, valor: 1, aguante: 52, debil: { ox: 0, oy: -14, r: 10, mult: 2.2 },
+    },
+    [TIPO.TEJEDOR]: {
+      vida: 44, dmg: 13, hw: 16, hh: 16, vel: 118, sprite: 'enem.tejedor.0', cuadros: 5,
+      aire: true, valor: 2, aguante: 38, debil: { ox: 0, oy: 0, r: 9, mult: 2.4 },
+    },
+    [TIPO.ESPEJO]: {
+      vida: 58, dmg: 14, hw: 20, hh: 20, vel: 104, sprite: 'enem.espejo.0', cuadros: 4,
+      aire: true, valor: 2, aguante: 58, debil: { ox: 0, oy: 0, r: 13, mult: 2.5 },
+    },
+    [TIPO.DIVISOR]: {
+      vida: 70, dmg: 18, hw: 22, hh: 20, vel: 128, sprite: 'enem.divisor.0', cuadros: 4,
+      aire: false, valor: 2, aguante: 48, debil: { ox: 0, oy: -4, r: 12, mult: 1.9 },
+    },
   };
   
   const COLOR_HOSTIL = [1.0, 0.24, 0.43];
   
-  function crearEnemigo(mundo, tipo, x, y, elite = false, escalaVida = 1) {
+  /** Tinte y ajustes de cada modificador de élite. */
+  const AJUSTE_ELITE = [
+    { nombre: 'BLINDADO', vida: 3.0, dmg: 1.35, vel: 0.85, escala: 1.32, aguante: 0.55, luz: [0.6, 0.85, 1.0] },
+    { nombre: 'VELOZ', vida: 1.5, dmg: 1.2, vel: 1.55, escala: 0.86, aguante: 0.8, luz: [1.0, 0.9, 0.35] },
+    { nombre: 'VOLATIL', vida: 2.0, dmg: 1.3, vel: 1.05, escala: 1.15, aguante: 1.0, luz: [1.0, 0.55, 0.2] },
+    { nombre: 'REGENERADOR', vida: 2.6, dmg: 1.25, vel: 1.0, escala: 1.2, aguante: 1.3, luz: [0.45, 1.0, 0.6] },
+  ];
+  
+  function crearEnemigo(mundo, tipo, x, y, elite = false, escalaVida = 1, nivelDivisor = 0) {
     const S = mundo.ent;
     const st = STATS[tipo];
     if (!st) return -1;
-    let mask = MASK.FISICA | MASK.SPRITE | MASK.VIDA | MASK.ENEMIGO | MASK.LUZ;
-    const e = mundo.crearEntidad(mask);
+    const e = mundo.crearEntidad(MASK.FISICA | MASK.SPRITE | MASK.VIDA | MASK.ENEMIGO | MASK.LUZ);
     if (e < 0) return -1;
+  
+    const variante = elite ? mundo.rng.int(AJUSTE_ELITE.length) : 0;
+    const A = elite ? AJUSTE_ELITE[variante] : null;
+    // El divisor encoge y pierde vida en cada generación.
+    const factorDiv = tipo === TIPO.DIVISOR ? Math.pow(0.52, nivelDivisor) : 1;
+    const escalaDiv = tipo === TIPO.DIVISOR ? Math.pow(0.72, nivelDivisor) : 1;
   
     S.x[e] = x; S.y[e] = y; S.px[e] = x; S.py[e] = y;
     S.vx[e] = 0; S.vy[e] = 0;
-    S.hw[e] = st.hw; S.hh[e] = st.hh;
+    S.hw[e] = st.hw * escalaDiv; S.hh[e] = st.hh * escalaDiv;
     S.tipo[e] = tipo;
     S.equipo[e] = 1;
-    S.vida[e] = st.vida * escalaVida * (elite ? 2.4 : 1);
+    S.vida[e] = st.vida * escalaVida * factorDiv * (A ? A.vida : 1);
     S.vidaMax[e] = S.vida[e];
-    S.dmg[e] = st.dmg * (elite ? 1.4 : 1);
+    S.dmg[e] = st.dmg * factorDiv * (A ? A.dmg : 1);
+    S.aguanteMax[e] = st.aguante * escalaVida * factorDiv * (A ? A.aguante : 1);
+    S.aguante[e] = S.aguanteMax[e];
+    S.aturdido[e] = 0;
+    S.sinGolpe[e] = 0;
+    S.marca[e] = 0;
+    S.variante[e] = tipo === TIPO.DIVISOR ? nivelDivisor : variante;
+    S.enlace[e] = -1;
     S.sprite[e] = mundo.R.idx(st.sprite);
     S.cuadros[e] = st.cuadros;
     S.velAnim[e] = 6 + mundo.rng.float() * 3;
     S.anim[e] = mundo.rng.float() * 4;
-    S.escala[e] = elite ? 1.25 : 1;
+    S.escala[e] = escalaDiv * (A ? A.escala : 1);
     S.facing[e] = mundo.jugador && mundo.jugador.x < x ? -1 : 1;
     S.estado[e] = 0;
     S.t1[e] = mundo.rng.range(0.4, 1.6);
@@ -7896,14 +8311,20 @@ __def("src/game/enemies.js", function (exports, __req) {
     if (tipo === TIPO.VOLADOR) { S.luzR[e] = 0.75; S.luzG[e] = 0.4; S.luzB[e] = 1; }
     if (tipo === TIPO.BOMBARDERO) { S.luzR[e] = 1; S.luzG[e] = 0.55; S.luzB[e] = 0.2; }
     if (tipo === TIPO.ESCUDO) { S.luzR[e] = 0.4; S.luzG[e] = 0.7; S.luzB[e] = 1; }
-    S.luzRadio[e] = elite ? 220 : 150;
-    S.luzInt[e] = 0.55;
+    if (tipo === TIPO.TEJEDOR) { S.luzR[e] = 0.45; S.luzG[e] = 1; S.luzB[e] = 0.85; }
+    if (tipo === TIPO.ESPEJO) { S.luzR[e] = 0.8; S.luzG[e] = 0.9; S.luzB[e] = 1; }
+    if (tipo === TIPO.DIVISOR) { S.luzR[e] = 1; S.luzG[e] = 0.45; S.luzB[e] = 0.75; }
+    if (A) { S.luzR[e] = A.luz[0]; S.luzG[e] = A.luz[1]; S.luzB[e] = A.luz[2]; }
+    S.luzRadio[e] = (elite ? 230 : 155) * escalaDiv;
+    S.luzInt[e] = elite ? 0.85 : 0.55;
+  
+    if (tipo === TIPO.TEJEDOR) emparejarTejedor(mundo, e);
   
     mundo.fx.aparicion(x, y, S.luzR[e], S.luzG[e], S.luzB[e]);
     return e;
   }
   
-  /** Proyectil enemigo. Los marcados como DESTRUIBLE se pueden devolver con parry. */
+  /** Proyectil enemigo. Los DESTRUIBLE se pueden devolver con parry. */
   function dispararEnemigo(mundo, x, y, ang, vel, dmg, grande = false, destruible = true) {
     const S = mundo.ent;
     const e = mundo.crearEntidad(MASK.FISICA | MASK.SPRITE | MASK.PROYECTIL | MASK.EMISIVO | MASK.LUZ);
@@ -7922,6 +8343,7 @@ __def("src/game/enemies.js", function (exports, __req) {
     S.golpes[e] = 1;
     S.modulos[e] = 0;
     S.c[e] = 0;
+    S.marca[e] = 0;
     S.flags[e] = FLAG.IGNORA_GRAVEDAD | (destruible ? FLAG.DESTRUIBLE : 0);
     S.sprite[e] = mundo.R.idx(grande ? 'bala.enemigaGrande' : 'bala.enemiga');
     S.luzR[e] = 1; S.luzG[e] = 0.35; S.luzB[e] = 0.45;
@@ -7929,7 +8351,6 @@ __def("src/game/enemies.js", function (exports, __req) {
     return e;
   }
   
-  /** Distancia y dirección al jugador; se cachea en el mundo para no recalcular. */
   function haciaJugador(mundo, e) {
     const S = mundo.ent;
     const j = mundo.jugador;
@@ -7939,6 +8360,146 @@ __def("src/game/enemies.js", function (exports, __req) {
     return d;
   }
   
+  /** Marca el ataque como comprometido: telegrafiado y devolvible con parry. */
+  function comprometer(mundo, e, duracion) {
+    const S = mundo.ent;
+    S.flags[e] |= FLAG.PARRYABLE;
+    S.t2[e] = duracion;
+    mundo.eventos.emit(EV.TELEGRAFIA, S.x[e], S.y[e], 1, 0);
+  }
+  
+  function soltarCompromiso(S, e) { S.flags[e] &= ~FLAG.PARRYABLE; }
+  
+  // ---------------------------------------------------------------- aguante ---
+  
+  /**
+   * Aplica desgaste de postura. Devuelve true si el enemigo acaba de quedar
+   * aturdido, para que quien llame pueda reaccionar (efectos, sonido, cámara).
+   */
+  function desgastarAguante(mundo, e, cantidad) {
+    const S = mundo.ent;
+    if (S.tipo[e] === TIPO.JEFE) return false;
+    S.sinGolpe[e] = 0;
+    if (S.aturdido[e] > 0) return false;
+    S.aguante[e] -= cantidad;
+    if (S.aguante[e] > 0) return false;
+    S.aguante[e] = S.aguanteMax[e];
+    S.aturdido[e] = 0.95;
+    S.estado[e] = 0;
+    S.t1[e] = Math.max(S.t1[e], 0.7);
+    S.t2[e] = 0;
+    soltarCompromiso(S, e);
+    S.vx[e] *= 0.25; S.vy[e] *= 0.25;
+    mundo.fx.aturdimiento(S.x[e], S.y[e]);
+    mundo.eventos.emit(EV.ATURDIMIENTO, S.x[e], S.y[e], 1, 0);
+    return true;
+  }
+  
+  /** Punto débil en coordenadas de mundo. Devuelve false si el tipo no tiene. */
+  function puntoDebil(S, e, out) {
+    const st = STATS[S.tipo[e]];
+    if (!st || !st.debil) return false;
+    // El espejo sólo enseña su núcleo cuando está abierto.
+    if (S.tipo[e] === TIPO.ESPEJO && (S.flags[e] & FLAG.ABIERTO) === 0) return false;
+    const esc = S.escala[e] || 1;
+    out[0] = S.x[e] + st.debil.ox * esc * (S.facing[e] < 0 ? -1 : 1);
+    out[1] = S.y[e] + st.debil.oy * esc;
+    out[2] = st.debil.r * esc;
+    out[3] = st.debil.mult;
+    return true;
+  }
+  
+  /** Reducción de daño por élite blindado. */
+  function factorDanio(S, e) {
+    if ((S.flags[e] & FLAG.ELITE) && S.variante[e] === ELITE.BLINDADO) return 0.6;
+    return 1;
+  }
+  
+  // ------------------------------------------------------------- separación ---
+  
+  /**
+   * Empuje mutuo entre enemigos. Sin esto se apilan en el mismo píxel y una
+   * oleada de diez se lee como un solo bulto.
+   *
+   * Dos detalles que costaron un intento fallido:
+   *  · Se corrige la POSICIÓN, no la velocidad. Aplicándolo a la velocidad, el
+   *    `approach()` de cada IA lo cancelaba al tick siguiente y no separaba nada.
+   *  · Si dos enemigos caen exactamente en el mismo punto la dirección de empuje
+   *    es indefinida; se usa un ángulo derivado del id (determinista) para que
+   *    una pila perfecta también se deshaga.
+   */
+  const EMPUJE_MAX = 130;        // px/s
+  const ANGULO_DORADO = 2.39996322972865332;
+  
+  function separarEnemigos(mundo, dt) {
+    const S = mundo.ent;
+    const rej = mundo.rejillaEnemigos;
+    for (let i = 0; i < S.count; i++) {
+      const e = S.dense[i];
+      if (S.alive[e] !== 1 || (S.mask[e] & MASK.ENEMIGO) === 0) continue;
+      const tipo = S.tipo[e];
+      if (tipo === TIPO.TORRETA || tipo === TIPO.JEFE || tipo === TIPO.JEFE_OJO) continue;
+  
+      const radio = S.hw[e] + 26;
+      const n = rej.consultar(S.x[e], S.y[e], radio);
+      let ex = 0, ey = 0, cuenta = 0;
+      for (let k = 0; k < n; k++) {
+        const o = rej.resultado[k];
+        if (o === e || S.alive[o] !== 1) continue;
+        const tipoO = S.tipo[o];
+        if (tipoO === TIPO.TORRETA || tipoO === TIPO.JEFE || tipoO === TIPO.JEFE_OJO) continue;
+        const dx = S.x[e] - S.x[o], dy = S.y[e] - S.y[o];
+        const d2 = dx * dx + dy * dy;
+        const min = S.hw[e] + S.hw[o];
+        if (d2 > min * min) continue;
+        cuenta++;
+        if (d2 < 0.25) {
+          // Superpuestos del todo: dirección estable a partir del id.
+          const a = e * ANGULO_DORADO;
+          ex += Math.cos(a); ey += Math.sin(a);
+        } else {
+          const d = Math.sqrt(d2);
+          const fuerza = 1 - d / min;
+          ex += (dx / d) * fuerza;
+          ey += (dy / d) * fuerza;
+        }
+      }
+      if (cuenta === 0) continue;
+  
+      // Se acota la suma: con muchos vecinos, si no, daría un salto.
+      const len = Math.hypot(ex, ey);
+      if (len > 2.5) { ex = ex / len * 2.5; ey = ey / len * 2.5; }
+  
+      const aire = (S.flags[e] & FLAG.IGNORA_GRAVEDAD) !== 0;
+      const nx = S.x[e] + ex * EMPUJE_MAX * dt;
+      const ny = aire ? S.y[e] + ey * EMPUJE_MAX * dt : S.y[e];
+      // Nunca se empuja dentro de la roca: primero se intenta el movimiento
+      // completo y, si no cabe, sólo el horizontal.
+      if (!mundo.fisica.solapaSolido(nx, ny, S.hw[e], S.hh[e])) {
+        S.x[e] = nx; S.y[e] = ny;
+      } else if (!mundo.fisica.solapaSolido(nx, S.y[e], S.hw[e], S.hh[e])) {
+        S.x[e] = nx;
+      }
+    }
+  }
+  
+  // ------------------------------------------------------------- tejedores ---
+  
+  function emparejarTejedor(mundo, e) {
+    const S = mundo.ent;
+    for (let i = 0; i < S.count; i++) {
+      const o = S.dense[i];
+      if (o === e || S.alive[o] !== 1) continue;
+      if (S.tipo[o] !== TIPO.TEJEDOR) continue;
+      if (S.resolve(S.enlace[o]) >= 0) continue;
+      S.enlace[o] = S.handle(e);
+      S.enlace[e] = S.handle(o);
+      return;
+    }
+  }
+  
+  // ------------------------------------------------------------------- IA ----
+  
   function actualizarEnemigo(mundo, e, dt) {
     const S = mundo.ent;
     const tipo = S.tipo[e];
@@ -7946,176 +8507,370 @@ __def("src/game/enemies.js", function (exports, __req) {
     if (!j || j.id < 0) return;
   
     S.anim[e] += dt * S.velAnim[e];
+    S.flash[e] = Math.max(0, S.flash[e] - dt * 6);
+    S.sinGolpe[e] += dt;
+    S.marca[e] = Math.max(0, S.marca[e] - dt);
+  
+    // Regeneración de aguante y de vida (élite regenerador).
+    if (S.sinGolpe[e] > 1.3 && S.aturdido[e] <= 0) {
+      S.aguante[e] = Math.min(S.aguanteMax[e], S.aguante[e] + S.aguanteMax[e] * 0.45 * dt);
+    }
+    if ((S.flags[e] & FLAG.ELITE) && S.variante[e] === ELITE.REGENERADOR && S.sinGolpe[e] > 2) {
+      S.vida[e] = Math.min(S.vidaMax[e], S.vida[e] + S.vidaMax[e] * 0.07 * dt);
+    }
+  
+    // Aturdido: ni se mueve ni ataca. Es la ventana para castigarlo.
+    if (S.aturdido[e] > 0) {
+      S.aturdido[e] -= dt;
+      S.vx[e] = approach(S.vx[e], 0, 700 * dt);
+      if ((S.flags[e] & FLAG.IGNORA_GRAVEDAD) !== 0) S.vy[e] = approach(S.vy[e], 0, 700 * dt);
+      if (S.aturdido[e] <= 0) S.t1[e] = 0.45;
+      return;
+    }
+  
     S.t1[e] -= dt;
     S.t2[e] = Math.max(0, S.t2[e] - dt);
-    S.flash[e] = Math.max(0, S.flash[e] - dt * 6);
   
     const d = haciaJugador(mundo, e);
     const dx = mundo._dx, dy = mundo._dy;
-    const jugadorVivo = j.estado !== 6;
+    const vivo = j.estado !== 6;
+    const st = STATS[tipo];
+    const A = (S.flags[e] & FLAG.ELITE) ? AJUSTE_ELITE[S.variante[e]] : null;
+    const vel = st.vel * (A ? A.vel : 1);
   
     switch (tipo) {
-      case TIPO.DRON: {
-        // Mantiene una distancia media y dispara ráfagas cortas.
-        const ideal = 230;
-        const empuje = d < ideal - 40 ? -1 : d > ideal + 40 ? 1 : 0;
-        S.vx[e] = approach(S.vx[e], dx * STATS[tipo].vel * empuje, 400 * dt);
-        S.vy[e] = approach(S.vy[e], dy * STATS[tipo].vel * empuje + Math.sin(S.anim[e] * 0.7 + S.a[e]) * 45, 400 * dt);
-        S.facing[e] = dx > 0 ? 1 : -1;
-        if (S.t1[e] <= 0 && d < 520 && jugadorVivo && mundo.lineaDeVision(S.x[e], S.y[e], j.x, j.y)) {
-          S.estado[e] = 1;
-          S.t2[e] = 0.42;
-          S.t1[e] = 2.1 + mundo.rng.float() * 1.1;
-          S.d[e] = 3;   // disparos restantes de la ráfaga
-          S.c[e] = 0;
-          mundo.eventos.emit(EV.TELEGRAFIA, S.x[e], S.y[e], 1, 0);
-          mundo.fx.telegrafia(S.x[e], S.y[e]);
-        }
-        if (S.estado[e] === 1 && S.t2[e] <= 0) {
-          if (S.d[e] > 0) {
-            const ang = Math.atan2(j.y - S.y[e], j.x - S.x[e]) + mundo.rng.spread(0.07);
-            dispararEnemigo(mundo, S.x[e] + dx * 20, S.y[e] + dy * 20, ang, 360, S.dmg[e]);
-            mundo.fx.fogonazo(S.x[e] + dx * 20, S.y[e] + dy * 20, ang, 1, 0.35, 0.5);
-            S.d[e]--;
-            S.t2[e] = 0.13;
-          } else S.estado[e] = 0;
-        }
-        break;
-      }
-  
-      case TIPO.RASTREADOR: {
-        // Persigue por el suelo y hace una embestida telegrafiada.
-        const enSuelo = S.b[e] > 0;
-        if (S.estado[e] === 0) {
-          const dir = sign(dx) || 1;
-          S.vx[e] = approach(S.vx[e], dir * STATS[tipo].vel * (d > 90 ? 1 : 0), 900 * dt);
-          S.facing[e] = dir;
-          if (d < 260 && Math.abs(j.y - S.y[e]) < 70 && S.t1[e] <= 0 && jugadorVivo) {
-            S.estado[e] = 1; S.t2[e] = 0.42; S.t1[e] = 2.6;
-            mundo.eventos.emit(EV.TELEGRAFIA, S.x[e], S.y[e], 1, 0);
-            mundo.fx.telegrafia(S.x[e], S.y[e]);
-          }
-          // Salta si hay un obstáculo o un hueco delante.
-          if (enSuelo && S.c[e] > 0 && mundo.rng.bool(0.6)) { S.vy[e] = -520; S.c[e] = 0; }
-        } else if (S.estado[e] === 1) {
-          S.vx[e] = approach(S.vx[e], 0, 1800 * dt);
-          if (S.t2[e] <= 0) {
-            S.estado[e] = 2; S.t2[e] = 0.55;
-            S.vx[e] = S.facing[e] * 620;
-            if (enSuelo) S.vy[e] = -180;
-            mundo.fx.dash(S.x[e], S.y[e], S.facing[e] > 0 ? 0 : Math.PI);
-          }
-        } else {
-          if (S.t2[e] <= 0) S.estado[e] = 0;
-        }
-        break;
-      }
-  
-      case TIPO.VOLADOR: {
-        // Vuelo ondulante y picado cuando está alineado.
-        S.a[e] += dt * 2.4;
-        if (S.estado[e] === 0) {
-          const alturaObjetivo = j.y - 130;
-          S.vx[e] = approach(S.vx[e], dx * STATS[tipo].vel, 500 * dt);
-          S.vy[e] = approach(S.vy[e], (alturaObjetivo - S.y[e]) * 2.4 + Math.sin(S.a[e]) * 70, 600 * dt);
-          S.facing[e] = dx > 0 ? 1 : -1;
-          if (Math.abs(j.x - S.x[e]) < 90 && S.y[e] < j.y - 60 && S.t1[e] <= 0 && jugadorVivo) {
-            S.estado[e] = 1; S.t2[e] = 0.34; S.t1[e] = 3.2;
-            mundo.fx.telegrafia(S.x[e], S.y[e]);
-            mundo.eventos.emit(EV.TELEGRAFIA, S.x[e], S.y[e], 1, 0);
-          }
-        } else if (S.estado[e] === 1) {
-          S.vx[e] = approach(S.vx[e], 0, 1400 * dt);
-          S.vy[e] = approach(S.vy[e], -60, 900 * dt);
-          if (S.t2[e] <= 0) {
-            S.estado[e] = 2; S.t2[e] = 0.8;
-            S.vx[e] = dx * 240; S.vy[e] = 760;
-          }
-        } else {
-          S.vy[e] = approach(S.vy[e], -140, 700 * dt);
-          if (S.t2[e] <= 0) S.estado[e] = 0;
-        }
-        break;
-      }
-  
-      case TIPO.ESCUDO: {
-        // Avanza de frente; el escudo bloquea por delante, hay que rodearlo.
-        const dir = sign(dx) || 1;
-        S.facing[e] = dir;
-        S.vx[e] = approach(S.vx[e], dir * STATS[tipo].vel, 500 * dt);
-        S.angulo[e] = Math.atan2(j.y - S.y[e], j.x - S.x[e]);
-        if (S.t1[e] <= 0 && d < 400 && jugadorVivo) {
-          S.t1[e] = 2.4 + mundo.rng.float();
-          const base = S.angulo[e];
-          for (let k = -1; k <= 1; k++) {
-            dispararEnemigo(mundo, S.x[e] + dx * 24, S.y[e], base + k * 0.22, 300, S.dmg[e] * 0.6);
-          }
-          mundo.fx.fogonazo(S.x[e] + dx * 24, S.y[e], base, 0.5, 0.75, 1);
-        }
-        break;
-      }
-  
-      case TIPO.ENJAMBRE: {
-        // Bandada: persigue con ruido y sin frenos.
-        S.a[e] += dt * 6;
-        const vel = STATS[tipo].vel;
-        S.vx[e] = approach(S.vx[e], dx * vel + Math.cos(S.a[e]) * 90, 900 * dt);
-        S.vy[e] = approach(S.vy[e], dy * vel + Math.sin(S.a[e] * 1.3) * 90, 900 * dt);
-        S.facing[e] = dx > 0 ? 1 : -1;
-        break;
-      }
-  
-      case TIPO.BOMBARDERO: {
-        // Se acerca lento, pita y revienta.
-        if (S.estado[e] === 0) {
-          S.vx[e] = approach(S.vx[e], dx * STATS[tipo].vel, 260 * dt);
-          S.vy[e] = approach(S.vy[e], dy * STATS[tipo].vel, 260 * dt);
-          if (d < 130 && jugadorVivo) { S.estado[e] = 1; S.t2[e] = 0.85; }
-        } else {
-          S.vx[e] = approach(S.vx[e], dx * 60, 400 * dt);
-          S.vy[e] = approach(S.vy[e], dy * 60, 400 * dt);
-          S.flash[e] = 0.35 + 0.65 * Math.abs(Math.sin(S.t2[e] * 22));
-          if (Math.floor(S.t2[e] * 6) !== Math.floor((S.t2[e] + dt) * 6)) {
-            mundo.eventos.emit(EV.TELEGRAFIA, S.x[e], S.y[e], 1, 0);
-          }
-          if (S.t2[e] <= 0) { mundo.matarEnemigo(e, true); return; }
-        }
-        break;
-      }
-  
-      case TIPO.TORRETA: {
-        S.angulo[e] = Math.atan2(j.y - S.y[e], j.x - S.x[e]);
-        if (S.estado[e] === 0) {
-          if (S.t1[e] <= 0 && d < 560 && jugadorVivo && mundo.lineaDeVision(S.x[e], S.y[e] - 14, j.x, j.y)) {
-            S.estado[e] = 1; S.t2[e] = 0.55; S.t1[e] = S.d[e] || 1.9;
-            mundo.eventos.emit(EV.TELEGRAFIA, S.x[e], S.y[e], 1, 0);
-            mundo.fx.telegrafia(S.x[e], S.y[e] - 14);
-          }
-        } else if (S.t2[e] <= 0) {
-          const base = S.angulo[e];
-          for (let k = 0; k < 3; k++) {
-            dispararEnemigo(mundo, S.x[e] + Math.cos(base) * 26, S.y[e] - 14 + Math.sin(base) * 26,
-              base + (k - 1) * 0.14, 400, S.dmg[e]);
-          }
-          mundo.fx.fogonazo(S.x[e] + Math.cos(base) * 26, S.y[e] - 14 + Math.sin(base) * 26, base, 1, 0.4, 0.5);
-          mundo.camara.sacudir(0.05);
-          S.estado[e] = 0;
-        }
-        break;
-      }
+      case TIPO.DRON: dron(mundo, e, dt, d, dx, dy, vivo, vel); break;
+      case TIPO.RASTREADOR: rastreador(mundo, e, dt, d, dx, dy, vivo, vel); break;
+      case TIPO.VOLADOR: volador(mundo, e, dt, d, dx, dy, vivo, vel); break;
+      case TIPO.ESCUDO: escudo(mundo, e, dt, d, dx, dy, vivo, vel); break;
+      case TIPO.ENJAMBRE: enjambre(mundo, e, dt, dx, dy, vel); break;
+      case TIPO.BOMBARDERO: bombardero(mundo, e, dt, d, dx, dy, vivo, vel); break;
+      case TIPO.TORRETA: torreta(mundo, e, dt, d, vivo); break;
+      case TIPO.TEJEDOR: tejedor(mundo, e, dt, d, dx, dy, vivo, vel); break;
+      case TIPO.ESPEJO: espejo(mundo, e, dt, d, dx, dy, vivo, vel); break;
+      case TIPO.DIVISOR: divisor(mundo, e, dt, d, dx, dy, vivo, vel); break;
       default: break;
     }
+  }
+  
+  // --- Dron: fuego de supresión a media distancia -----------------------------
+  function dron(mundo, e, dt, d, dx, dy, vivo, vel) {
+    const S = mundo.ent;
+    const j = mundo.jugador;
+    const ideal = 230;
+    const empuje = d < ideal - 40 ? -1 : d > ideal + 40 ? 1 : 0;
+    S.vx[e] = approach(S.vx[e], dx * vel * empuje, 400 * dt);
+    S.vy[e] = approach(S.vy[e], dy * vel * empuje + Math.sin(S.anim[e] * 0.7 + S.a[e]) * 45, 400 * dt);
+    S.facing[e] = dx > 0 ? 1 : -1;
+  
+    if (S.estado[e] === 0 && S.t1[e] <= 0 && d < 520 && vivo &&
+        mundo.lineaDeVision(S.x[e], S.y[e], j.x, j.y)) {
+      S.estado[e] = 1;
+      S.t1[e] = 2.1 + mundo.rng.float() * 1.1;
+      S.d[e] = 3;
+      S.a[e] = Math.atan2(j.y - S.y[e], j.x - S.x[e]);
+      comprometer(mundo, e, 0.5);
+      mundo.fx.zonaCono(S.x[e], S.y[e], S.a[e], 0.16, 520, 0.5, S.handle(e));
+    }
+    if (S.estado[e] === 1 && S.t2[e] <= 0) {
+      soltarCompromiso(S, e);
+      if (S.d[e] > 0) {
+        const ang = Math.atan2(j.y - S.y[e], j.x - S.x[e]) + mundo.rng.spread(0.07);
+        dispararEnemigo(mundo, S.x[e] + dx * 20, S.y[e] + dy * 20, ang, 360, S.dmg[e]);
+        mundo.fx.fogonazo(S.x[e] + dx * 20, S.y[e] + dy * 20, ang, 1, 0.35, 0.5);
+        S.d[e]--;
+        S.t2[e] = 0.13;
+      } else S.estado[e] = 0;
+    }
+  }
+  
+  // --- Rastreador: persigue por el suelo y embiste ----------------------------
+  function rastreador(mundo, e, dt, d, dx, dy, vivo, vel) {
+    const S = mundo.ent;
+    const j = mundo.jugador;
+    const enSuelo = S.b[e] > 0;
+  
+    if (S.estado[e] === 0) {
+      const dir = sign(dx) || 1;
+      S.vx[e] = approach(S.vx[e], dir * vel * (d > 90 ? 1 : 0), 900 * dt);
+      S.facing[e] = dir;
+  
+      // Salta con criterio: si tiene un muro delante, o si el suelo se acaba y
+      // el jugador está al otro lado. Antes saltaba al azar y se veía tonto.
+      if (enSuelo) {
+        const frente = S.x[e] + dir * (S.hw[e] + 18);
+        const hayMuro = S.c[e] > 0;
+        const hayHueco = !mundo.fisica.haySueloBajo(frente, S.y[e], 6, S.hh[e], 8);
+        const jugadorArriba = j.y < S.y[e] - 50;
+        if (hayMuro || (hayHueco && Math.abs(j.x - S.x[e]) > 40) || (jugadorArriba && mundo.rng.bool(0.03))) {
+          S.vy[e] = -560;
+          S.c[e] = 0;
+        }
+      }
+  
+      if (d < 270 && Math.abs(j.y - S.y[e]) < 80 && S.t1[e] <= 0 && vivo) {
+        S.estado[e] = 1;
+        S.t1[e] = 2.6;
+        comprometer(mundo, e, 0.46);
+        const alcance = 340;
+        mundo.fx.zonaLinea(S.x[e], S.y[e], S.x[e] + S.facing[e] * alcance, S.y[e],
+          S.hh[e] * 2.1, 0.46, S.handle(e));
+      }
+    } else if (S.estado[e] === 1) {
+      S.vx[e] = approach(S.vx[e], 0, 1800 * dt);
+      if (S.t2[e] <= 0) {
+        soltarCompromiso(S, e);
+        S.estado[e] = 2; S.t2[e] = 0.55;
+        S.vx[e] = S.facing[e] * 640;
+        if (S.b[e] > 0) S.vy[e] = -190;
+        mundo.fx.dash(S.x[e], S.y[e], S.facing[e] > 0 ? 0 : Math.PI);
+      }
+    } else if (S.t2[e] <= 0) S.estado[e] = 0;
+  }
+  
+  // --- Volador: vuelo ondulante y picado --------------------------------------
+  function volador(mundo, e, dt, d, dx, dy, vivo, vel) {
+    const S = mundo.ent;
+    const j = mundo.jugador;
+    S.a[e] += dt * 2.4;
+    if (S.estado[e] === 0) {
+      const alturaObjetivo = j.y - 130;
+      S.vx[e] = approach(S.vx[e], dx * vel, 500 * dt);
+      S.vy[e] = approach(S.vy[e], (alturaObjetivo - S.y[e]) * 2.4 + Math.sin(S.a[e]) * 70, 600 * dt);
+      S.facing[e] = dx > 0 ? 1 : -1;
+      if (Math.abs(j.x - S.x[e]) < 100 && S.y[e] < j.y - 60 && S.t1[e] <= 0 && vivo) {
+        S.estado[e] = 1; S.t1[e] = 3.2;
+        comprometer(mundo, e, 0.38);
+        mundo.fx.zonaLinea(S.x[e], S.y[e], S.x[e], S.y[e] + 420, S.hw[e] * 2.2, 0.38, S.handle(e));
+      }
+    } else if (S.estado[e] === 1) {
+      S.vx[e] = approach(S.vx[e], 0, 1400 * dt);
+      S.vy[e] = approach(S.vy[e], -60, 900 * dt);
+      if (S.t2[e] <= 0) {
+        soltarCompromiso(S, e);
+        S.estado[e] = 2; S.t2[e] = 0.8;
+        S.vx[e] = dx * 240; S.vy[e] = 780;
+      }
+    } else {
+      S.vy[e] = approach(S.vy[e], -140, 700 * dt);
+      if (S.t2[e] <= 0) S.estado[e] = 0;
+    }
+  }
+  
+  // --- Escudo: avanza de frente; hay que rodearlo -----------------------------
+  function escudo(mundo, e, dt, d, dx, dy, vivo, vel) {
+    const S = mundo.ent;
+    const j = mundo.jugador;
+    const dir = sign(dx) || 1;
+    S.facing[e] = dir;
+    S.vx[e] = approach(S.vx[e], dir * vel, 500 * dt);
+    S.angulo[e] = Math.atan2(j.y - S.y[e], j.x - S.x[e]);
+  
+    if (S.estado[e] === 0 && S.t1[e] <= 0 && d < 420 && vivo) {
+      S.estado[e] = 1;
+      S.t1[e] = 2.6 + mundo.rng.float();
+      S.a[e] = S.angulo[e];
+      comprometer(mundo, e, 0.55);
+      mundo.fx.zonaCono(S.x[e], S.y[e], S.a[e], 0.30, 420, 0.55, S.handle(e));
+    } else if (S.estado[e] === 1 && S.t2[e] <= 0) {
+      soltarCompromiso(S, e);
+      S.estado[e] = 0;
+      const base = S.angulo[e];
+      for (let k = -1; k <= 1; k++) {
+        dispararEnemigo(mundo, S.x[e] + dx * 24, S.y[e], base + k * 0.24, 320, S.dmg[e] * 0.6);
+      }
+      mundo.fx.fogonazo(S.x[e] + dx * 24, S.y[e], base, 0.5, 0.75, 1);
+    }
+  }
+  
+  // --- Enjambre: bandada sin frenos -------------------------------------------
+  function enjambre(mundo, e, dt, dx, dy, vel) {
+    const S = mundo.ent;
+    S.a[e] += dt * 6;
+    S.vx[e] = approach(S.vx[e], dx * vel + Math.cos(S.a[e]) * 90, 900 * dt);
+    S.vy[e] = approach(S.vy[e], dy * vel + Math.sin(S.a[e] * 1.3) * 90, 900 * dt);
+    S.facing[e] = dx > 0 ? 1 : -1;
+  }
+  
+  // --- Bombardero: se acerca, pita y revienta ---------------------------------
+  function bombardero(mundo, e, dt, d, dx, dy, vivo, vel) {
+    const S = mundo.ent;
+    if (S.estado[e] === 0) {
+      S.vx[e] = approach(S.vx[e], dx * vel, 260 * dt);
+      S.vy[e] = approach(S.vy[e], dy * vel, 260 * dt);
+      if (d < 140 && vivo) {
+        S.estado[e] = 1;
+        comprometer(mundo, e, 0.95);
+        // El círculo dice exactamente hasta dónde llega. Y se puede devolver.
+        mundo.fx.zonaCirculo(S.x[e], S.y[e], 130, 0.95, S.handle(e), 1, 0.5, 0.2);
+      }
+    } else {
+      S.vx[e] = approach(S.vx[e], dx * 60, 400 * dt);
+      S.vy[e] = approach(S.vy[e], dy * 60, 400 * dt);
+      S.flash[e] = 0.35 + 0.65 * Math.abs(Math.sin(S.t2[e] * 22));
+      if (S.t2[e] <= 0) { mundo.matarEnemigo(e, true); }
+    }
+  }
+  
+  // --- Torreta ---------------------------------------------------------------
+  function torreta(mundo, e, dt, d, vivo) {
+    const S = mundo.ent;
+    const j = mundo.jugador;
+    S.angulo[e] = Math.atan2(j.y - S.y[e], j.x - S.x[e]);
+    if (S.estado[e] === 0) {
+      if (S.t1[e] <= 0 && d < 560 && vivo && mundo.lineaDeVision(S.x[e], S.y[e] - 14, j.x, j.y)) {
+        S.estado[e] = 1;
+        S.t1[e] = S.d[e] || 1.9;
+        comprometer(mundo, e, 0.6);
+        mundo.fx.zonaCono(S.x[e], S.y[e] - 14, S.angulo[e], 0.16, 560, 0.6, S.handle(e));
+      }
+    } else if (S.t2[e] <= 0) {
+      soltarCompromiso(S, e);
+      const base = S.angulo[e];
+      for (let k = 0; k < 3; k++) {
+        dispararEnemigo(mundo, S.x[e] + Math.cos(base) * 26, S.y[e] - 14 + Math.sin(base) * 26,
+          base + (k - 1) * 0.14, 400, S.dmg[e]);
+      }
+      mundo.fx.fogonazo(S.x[e] + Math.cos(base) * 26, S.y[e] - 14 + Math.sin(base) * 26, base, 1, 0.4, 0.5);
+      mundo.camara.sacudir(0.05);
+      S.estado[e] = 0;
+    }
+  }
+  
+  // --- Tejedor: dos nodos y un cable entre ellos ------------------------------
+  function tejedor(mundo, e, dt, d, dx, dy, vivo, vel) {
+    const S = mundo.ent;
+    const j = mundo.jugador;
+    const pareja = S.resolve(S.enlace[e]);
+  
+    if (pareja >= 0) {
+      // En pareja: se colocan a los lados del jugador para cruzarle el cable.
+      const lado = S.handle(e) > S.enlace[e] ? 1 : -1;
+      const objX = j.x + lado * 190;
+      const objY = j.y - 40 + Math.sin(S.anim[e] * 0.5 + S.a[e]) * 40;
+      S.vx[e] = approach(S.vx[e], (objX - S.x[e]) * 1.6, 340 * dt);
+      S.vy[e] = approach(S.vy[e], (objY - S.y[e]) * 1.6, 340 * dt);
+    } else {
+      // Solo: se vuelve agresivo y dispara en abanico.
+      S.vx[e] = approach(S.vx[e], dx * vel * 1.3, 400 * dt);
+      S.vy[e] = approach(S.vy[e], dy * vel * 1.3 - 40, 400 * dt);
+      if (S.estado[e] === 0 && S.t1[e] <= 0 && d < 460 && vivo) {
+        S.estado[e] = 1;
+        S.t1[e] = 2.4;
+        S.a[e] = Math.atan2(j.y - S.y[e], j.x - S.x[e]);
+        comprometer(mundo, e, 0.45);
+        mundo.fx.zonaCono(S.x[e], S.y[e], S.a[e], 0.45, 400, 0.45, S.handle(e));
+      } else if (S.estado[e] === 1 && S.t2[e] <= 0) {
+        soltarCompromiso(S, e);
+        S.estado[e] = 0;
+        for (let k = -2; k <= 2; k++) {
+          dispararEnemigo(mundo, S.x[e], S.y[e], S.a[e] + k * 0.22, 330, S.dmg[e] * 0.55);
+        }
+        mundo.fx.fogonazo(S.x[e], S.y[e], S.a[e], 0.5, 1, 0.85);
+      }
+    }
+    S.facing[e] = dx > 0 ? 1 : -1;
+  }
+  
+  // --- Espejo: te devuelve tus disparos salvo cuando se abre -------------------
+  function espejo(mundo, e, dt, d, dx, dy, vivo, vel) {
+    const S = mundo.ent;
+    const j = mundo.jugador;
+    const ideal = 260;
+    const empuje = d < ideal - 50 ? -1 : d > ideal + 50 ? 1 : 0;
+    S.vx[e] = approach(S.vx[e], dx * vel * empuje, 320 * dt);
+    S.vy[e] = approach(S.vy[e], dy * vel * empuje + Math.sin(S.anim[e] * 0.5) * 30, 320 * dt);
+    S.facing[e] = dx > 0 ? 1 : -1;
+    S.angulo[e] = Math.atan2(j.y - S.y[e], j.x - S.x[e]);
+  
+    if ((S.flags[e] & FLAG.ABIERTO) === 0) {
+      if (S.t1[e] <= 0) {
+        // Se abre: es la ventana para castigarlo. Se avisa en verde, no en rojo:
+        // esto es una oportunidad, no una amenaza.
+        S.flags[e] |= FLAG.ABIERTO;
+        S.t1[e] = 1.15;
+        S.sprite[e] = mundo.R.idx('enem.espejoAbierto.0');
+        S.cuadros[e] = 3;
+        mundo.fx.zonaCirculo(S.x[e], S.y[e], 46, 1.15, S.handle(e), 0.4, 1, 0.6);
+        mundo.eventos.emit(EV.CARGA_LISTA, S.x[e], S.y[e], 1, 0);
+      }
+    } else if (S.t1[e] <= 0) {
+      S.flags[e] &= ~FLAG.ABIERTO;
+      S.t1[e] = 2.6 + mundo.rng.float() * 1.2;
+      S.sprite[e] = mundo.R.idx('enem.espejo.0');
+      S.cuadros[e] = 4;
+      // Al cerrarse suelta una descarga hacia el jugador.
+      if (vivo && d < 520) {
+        dispararEnemigo(mundo, S.x[e], S.y[e], S.angulo[e], 340, S.dmg[e]);
+        mundo.fx.fogonazo(S.x[e], S.y[e], S.angulo[e], 0.8, 0.9, 1);
+      }
+    }
+  }
+  
+  // --- Divisor: se parte en dos al morir --------------------------------------
+  function divisor(mundo, e, dt, d, dx, dy, vivo, vel) {
+    const S = mundo.ent;
+    const enSuelo = S.b[e] > 0;
+    if (S.estado[e] === 0) {
+      const dir = sign(dx) || 1;
+      S.facing[e] = dir;
+      S.vx[e] = approach(S.vx[e], dir * vel, 620 * dt);
+      if (enSuelo && (S.c[e] > 0 || mundo.rng.bool(0.012))) { S.vy[e] = -430; S.c[e] = 0; }
+      if (d < 150 && S.t1[e] <= 0 && vivo) {
+        S.estado[e] = 1;
+        S.t1[e] = 2.2;
+        comprometer(mundo, e, 0.5);
+        mundo.fx.zonaCirculo(S.x[e], S.y[e], 110 * (S.escala[e] || 1), 0.5, S.handle(e));
+      }
+    } else if (S.t2[e] <= 0) {
+      soltarCompromiso(S, e);
+      S.estado[e] = 0;
+      // Pisotón: onda de área alrededor.
+      const radio = 110 * (S.escala[e] || 1);
+      mundo.golpeArea(S.x[e], S.y[e], radio, S.dmg[e], e);
+      mundo.fx.explosionGrande(S.x[e], S.y[e], 0.7 * (S.escala[e] || 1));
+      mundo.camara.sacudir(0.22);
+      if (enSuelo) S.vy[e] = -180;
+    }
+  }
+  
+  /** Al morir, un divisor deja dos crías más pequeñas. */
+  function partirDivisor(mundo, e) {
+    const S = mundo.ent;
+    const nivel = S.variante[e];
+    if (nivel >= 2) return 0;
+    let creados = 0;
+    for (let k = 0; k < 2; k++) {
+      const ang = k === 0 ? -2.2 : -0.94;
+      const hijo = crearEnemigo(mundo, TIPO.DIVISOR,
+        S.x[e] + Math.cos(ang) * 26, S.y[e] - 10, false, mundo.progresion.escalaVida(), nivel + 1);
+      if (hijo < 0) continue;
+      S.vx[hijo] = Math.cos(ang) * 240;
+      S.vy[hijo] = -260;
+      creados++;
+    }
+    return creados;
   }
   
   /** ¿El escudo frontal bloquea un impacto que llega desde (ix,iy)? */
   function bloqueaEscudo(S, e, ix, iy) {
     if ((S.flags[e] & FLAG.ESCUDO_FRONTAL) === 0) return false;
+    if (S.aturdido[e] > 0) return false;   // aturdido baja la guardia
     const ang = Math.atan2(iy - S.y[e], ix - S.x[e]);
     const frente = S.facing[e] > 0 ? 0 : Math.PI;
     return Math.abs(angleDelta(frente, ang)) < 1.05;
   }
   
-  Object.assign(exports, { STATS, crearEnemigo, dispararEnemigo, actualizarEnemigo, bloqueaEscudo });
+  /** ¿El espejo devuelve este disparo? Sólo con la placa puesta y de frente. */
+  function reflejaEspejo(S, e, ix, iy) {
+    if (S.tipo[e] !== TIPO.ESPEJO) return false;
+    if (S.flags[e] & FLAG.ABIERTO) return false;
+    if (S.aturdido[e] > 0) return false;
+    const ang = Math.atan2(iy - S.y[e], ix - S.x[e]);
+    return Math.abs(angleDelta(S.angulo[e], ang)) < 1.25;
+  }
+  
+  Object.assign(exports, { STATS, crearEnemigo, dispararEnemigo, desgastarAguante, puntoDebil, factorDanio, separarEnemigos, actualizarEnemigo, partirDivisor, bloqueaEscudo, reflejaEspejo });
 });
 
 // ==================================================================
@@ -8753,21 +9508,28 @@ __def("src/game/progression.js", function (exports, __req) {
         const lista = [];
         const presupuesto = Math.round((3 + dif * 1.35) * (1 + o * 0.32));
         let gastado = 0;
+        // `pareja` fuerza a que salgan de dos en dos: un tejedor solo no tiende
+        // ningun cable y pierde todo su sentido.
         const disponibles = [
           { tipo: TIPOS.DRON, coste: 2, desde: 0 },
           { tipo: TIPOS.RASTREADOR, coste: 2, desde: 0 },
           { tipo: TIPOS.ENJAMBRE, coste: 1, desde: 0 },
           { tipo: TIPOS.VOLADOR, coste: 2, desde: 1 },
           { tipo: TIPOS.BOMBARDERO, coste: 3, desde: 1 },
+          { tipo: TIPOS.DIVISOR, coste: 4, desde: 1 },
+          { tipo: TIPOS.TEJEDOR, coste: 3, desde: 1, pareja: true },
           { tipo: TIPOS.ESCUDO, coste: 4, desde: 2 },
+          { tipo: TIPOS.ESPEJO, coste: 4, desde: 2 },
         ].filter((x) => b >= x.desde);
         let guardia = 0;
         while (gastado < presupuesto && guardia++ < 64) {
           const pick = this.rng.pick(disponibles);
-          if (gastado + pick.coste > presupuesto + 1) break;
-          const elite = dif > 6 && this.rng.bool(0.12);
-          lista.push({ tipo: pick.tipo, elite });
-          gastado += pick.coste * (elite ? 2 : 1);
+          const cuantos = pick.pareja ? 2 : 1;
+          const coste = pick.coste * cuantos;
+          if (gastado + coste > presupuesto + 1) break;
+          const elite = dif > 6 && !pick.pareja && this.rng.bool(0.14);
+          for (let k = 0; k < cuantos; k++) lista.push({ tipo: pick.tipo, elite });
+          gastado += coste * (elite ? 2 : 1);
         }
         if (lista.length === 0) lista.push({ tipo: TIPOS.DRON, elite: false });
         oleadas.push(lista);
@@ -8832,6 +9594,78 @@ __def("src/game/fx.js", function (exports, __req) {
   const { TAU } = __req("src/core/math.js");
   
   const MAX_FX = 512;
+  const MAX_ZONAS = 96;
+  
+  /** Formas de telegrafía. Cada ataque usa la que describe su area real. */
+  const ZONA = { LINEA: 0, CONO: 1, CIRCULO: 2 };
+  
+  /**
+   * Zonas de peligro: el dibujo de lo que va a pasar antes de que pase.
+   *
+   * No hacen daño ni tocan la simulación; su única función es que un ataque sea
+   * leíble con tiempo de sobra. La barra de relleno avanza con el temporizador
+   * del ataque real, así que lo que ves es exactamente cuándo va a impactar.
+   */
+  class PoolZonas {
+    constructor() {
+      this.tipo = new Uint8Array(MAX_ZONAS);
+      this.x = new Float32Array(MAX_ZONAS);
+      this.y = new Float32Array(MAX_ZONAS);
+      this.x2 = new Float32Array(MAX_ZONAS);
+      this.y2 = new Float32Array(MAX_ZONAS);
+      this.radio = new Float32Array(MAX_ZONAS);
+      this.ang = new Float32Array(MAX_ZONAS);
+      this.apertura = new Float32Array(MAX_ZONAS);
+      this.grosor = new Float32Array(MAX_ZONAS);
+      this.t = new Float32Array(MAX_ZONAS);
+      this.dur = new Float32Array(MAX_ZONAS);
+      this.r = new Float32Array(MAX_ZONAS);
+      this.g = new Float32Array(MAX_ZONAS);
+      this.b = new Float32Array(MAX_ZONAS);
+      this.seguir = new Int32Array(MAX_ZONAS);   // handle a seguir, o -1
+      this.vivo = new Uint8Array(MAX_ZONAS);
+      this.n = 0;
+      this.cursor = 0;
+    }
+  
+    add(tipo, dur) {
+      let i = -1;
+      for (let k = 0; k < MAX_ZONAS; k++) {
+        const c = (this.cursor + k) % MAX_ZONAS;
+        if (!this.vivo[c]) { i = c; break; }
+      }
+      if (i < 0) return -1;
+      this.cursor = (i + 1) % MAX_ZONAS;
+      this.vivo[i] = 1;
+      this.tipo[i] = tipo;
+      this.t[i] = 0; this.dur[i] = dur;
+      this.seguir[i] = -1;
+      this.r[i] = 1; this.g[i] = 0.28; this.b[i] = 0.36;
+      this.grosor[i] = 26;
+      return i;
+    }
+  
+    actualizar(dt, ent) {
+      let vivos = 0;
+      for (let i = 0; i < MAX_ZONAS; i++) {
+        if (!this.vivo[i]) continue;
+        this.t[i] += dt;
+        // Las zonas ancladas a una entidad la siguen mientras se preparan.
+        if (this.seguir[i] >= 0 && ent) {
+          const e = ent.resolve(this.seguir[i]);
+          if (e < 0) { this.vivo[i] = 0; continue; }
+          const dx = ent.x[e] - this.x[i];
+          const dy = ent.y[e] - this.y[i];
+          this.x[i] = ent.x[e]; this.y[i] = ent.y[e];
+          this.x2[i] += dx; this.y2[i] += dy;
+        }
+        if (this.t[i] >= this.dur[i]) this.vivo[i] = 0; else vivos++;
+      }
+      this.n = vivos;
+    }
+  }
+  
+  
   
   /** Pool de efectos animados con sprites (anillos, impactos, telegrafías). */
   class PoolFx {
@@ -8892,13 +9726,51 @@ __def("src/game/fx.js", function (exports, __req) {
     constructor(mundo) {
       this.mundo = mundo;
       this.pool = new PoolFx();
+      this.zonas = new PoolZonas();
       this.activo = true;
     }
   
     get P() { return this.mundo.R.particulas; }
     get R() { return this.mundo.R; }
   
-    actualizar(dt) { this.pool.actualizar(dt); }
+    actualizar(dt) {
+      this.pool.actualizar(dt);
+      this.zonas.actualizar(dt, this.mundo.ent);
+    }
+  
+    // --------------------------------------------------- zonas de peligro ----
+  
+    /** Franja recta: embestidas, rayos, disparos rasantes. */
+    zonaLinea(x0, y0, x1, y1, grosor, dur, seguir = -1) {
+      if (!this.activo) return;
+      const Z = this.zonas;
+      const i = Z.add(ZONA.LINEA, dur);
+      if (i < 0) return;
+      Z.x[i] = x0; Z.y[i] = y0; Z.x2[i] = x1; Z.y2[i] = y1;
+      Z.grosor[i] = grosor;
+      Z.seguir[i] = seguir;
+    }
+  
+    /** Abanico: escopetazos y barridos. */
+    zonaCono(x, y, ang, apertura, radio, dur, seguir = -1) {
+      if (!this.activo) return;
+      const Z = this.zonas;
+      const i = Z.add(ZONA.CONO, dur);
+      if (i < 0) return;
+      Z.x[i] = x; Z.y[i] = y; Z.ang[i] = ang; Z.apertura[i] = apertura; Z.radio[i] = radio;
+      Z.seguir[i] = seguir;
+    }
+  
+    /** Círculo: explosiones y golpes de área. */
+    zonaCirculo(x, y, radio, dur, seguir = -1, r = 1, g = 0.28, b = 0.36) {
+      if (!this.activo) return;
+      const Z = this.zonas;
+      const i = Z.add(ZONA.CIRCULO, dur);
+      if (i < 0) return;
+      Z.x[i] = x; Z.y[i] = y; Z.radio[i] = radio;
+      Z.seguir[i] = seguir;
+      Z.r[i] = r; Z.g[i] = g; Z.b[i] = b;
+    }
   
     // ------------------------------------------------------------ jugador ----
   
@@ -8956,6 +9828,64 @@ __def("src/game/fx.js", function (exports, __req) {
       if (!this.activo) return;
       this.P.chispas(x, y, 24, -Math.PI / 2, 1.1, 190, 0.5, 1, 0.65, 0.9, 7);
       this.pool.add(this.R.idx('fx.anillo.0'), 5, x, y, 0.4, 0.4, 1.3, 0.5, 1, 0.7, 0.8);
+    }
+  
+    /** Rotura de postura: el enemigo queda aturdido y abierto. */
+    aturdimiento(x, y) {
+      if (!this.activo) return;
+      this.pool.add(this.R.idx('fx.anillo.0'), 5, x, y, 0.38, 0.5, 2.0, 1, 0.92, 0.45, 1);
+      this.pool.add(this.R.idx('fx.impacto.0'), 4, x, y, 0.26, 0.8, 1.6, 1, 0.95, 0.6, 0.95, CR.angle());
+      this.P.chispas(x, y, 22, -Math.PI / 2, 2.2, 320, 1, 0.9, 0.4, 0.5, 8);
+      this.mundo.post.golpe(0.22, 1, 0.9, 0.55);
+    }
+  
+    /** Impacto en punto débil: se lee distinto a propósito. */
+    critico(x, y, ang) {
+      if (!this.activo) return;
+      this.P.chispas(x, y, 20, ang + Math.PI, 1.1, 460, 1, 0.92, 0.35, 0.4, 8);
+      this.pool.add(this.R.idx('fx.destello'), 1, x, y, 0.16, 1.1, 0.35, 1, 0.95, 0.55, 1, CR.angle());
+      this.pool.add(this.R.idx('fx.anillo.0'), 5, x, y, 0.24, 0.35, 1.2, 1, 0.9, 0.4, 0.9);
+    }
+  
+    /** Parry acertado contra un ataque cuerpo a cuerpo. */
+    parryMelee(x, y) {
+      if (!this.activo) return;
+      this.pool.add(this.R.idx('fx.anillo.0'), 5, x, y, 0.4, 0.6, 2.6, 1, 0.55, 0.95, 1);
+      this.pool.add(this.R.idx('fx.destello'), 1, x, y, 0.26, 1.9, 0.5, 1, 0.8, 1, 1);
+      this.P.ondaChoque(x, y, 46, 520, 1, 0.6, 1, 0.45);
+      this.mundo.post.golpe(0.45, 1, 0.65, 1);
+    }
+  
+    /** El arma acaba de terminar de cargar: aviso discreto sobre Vex. */
+    cargaLista(x, y) {
+      if (!this.activo) return;
+      this.pool.add(this.R.idx('fx.anillo.0'), 5, x, y, 0.34, 0.75, 0.25, 0.6, 1, 1, 0.85);
+      this.P.chispas(x, y, 10, -Math.PI / 2, 1.4, 130, 0.7, 1, 1, 0.45, 5);
+    }
+  
+    /** Salida de un disparo cargado. */
+    disparoCargado(x, y, ang) {
+      if (!this.activo) return;
+      this.P.chispas(x + Math.cos(ang) * 24, y + Math.sin(ang) * 24, 26, ang, 0.45, 620,
+        1, 0.95, 0.7, 0.35, 9);
+      this.pool.add(this.R.idx('fx.anillo.0'), 5, x + Math.cos(ang) * 26, y + Math.sin(ang) * 26,
+        0.26, 0.5, 1.7, 1, 0.95, 0.7, 0.95, ang);
+      this.pool.add(this.R.idx('fx.destello'), 1, x + Math.cos(ang) * 30, y + Math.sin(ang) * 30,
+        0.14, 1.2, 0.4, 1, 0.95, 0.75, 1, ang);
+      this.mundo.post.golpe(0.2, 1, 0.95, 0.75);
+    }
+  
+    /** Marca de la cadena eléctrica pegada a un enemigo. */
+    marca(x, y) {
+      if (!this.activo) return;
+      this.pool.add(this.R.idx('fx.telegrafia.0'), 4, x, y, 0.3, 0.5, 0.7, 0.72, 0.5, 1, 0.85);
+    }
+  
+    /** Detonación de la marca. */
+    detonacion(x, y) {
+      if (!this.activo) return;
+      this.P.ondaChoque(x, y, 26, 380, 0.75, 0.5, 1, 0.35);
+      this.pool.add(this.R.idx('fx.anillo.0'), 5, x, y, 0.28, 0.4, 1.7, 0.75, 0.5, 1, 0.95);
     }
   
     // ----------------------------------------------------------- enemigos ----
@@ -9037,7 +9967,7 @@ __def("src/game/fx.js", function (exports, __req) {
     }
   }
   
-  Object.assign(exports, { Fx });
+  Object.assign(exports, { ZONA, Fx });
 });
 
 // ==================================================================
@@ -9148,13 +10078,13 @@ __def("src/game/world.js", function (exports, __req) {
   //  · Aquí no se asigna memoria en el bucle caliente: todo sale de pools.
   // Cumplir esas tres cosas es lo que hace que la repetición sea exacta.
   
-  const { crearAlmacen, MASK, TIPO, FLAG, NOMBRE_ENEMIGO } = __req("src/game/components.js");
+  const { crearAlmacen, MASK, TIPO, FLAG, ELITE, NOMBRE_ENEMIGO } = __req("src/game/components.js");
   const { Fisica } = __req("src/game/physics.js");
   const { generarSala, TIPO_SALA } = __req("src/game/level.js");
   const { TAM, T, esSolido } = __req("src/game/tiles.js");
   const { Jugador, ESTADO, P } = __req("src/game/player.js");
-  const { Arma, disparar, actualizarProyectil, MOD, LISTA_MODULOS, MAX_EQUIPADOS } = __req("src/game/weapons.js");
-  const { crearEnemigo, actualizarEnemigo, dispararEnemigo, bloqueaEscudo, STATS } = __req("src/game/enemies.js");
+  const { Arma, disparar, actualizarProyectil, comboDe, MOD, LISTA_MODULOS, MAX_EQUIPADOS } = __req("src/game/weapons.js");
+  const { crearEnemigo, actualizarEnemigo, dispararEnemigo, bloqueaEscudo, reflejaEspejo, desgastarAguante, puntoDebil, factorDanio, separarEnemigos, partirDivisor, STATS } = __req("src/game/enemies.js");
   const { crearJefe, actualizarJefe, actualizarOjo, ojosVivos } = __req("src/game/boss.js");
   const { Trampas, crearEscombro, actualizarRigido } = __req("src/game/hazards.js");
   const { crearPickup, actualizarPickup } = __req("src/game/pickups.js");
@@ -9172,6 +10102,14 @@ __def("src/game/world.js", function (exports, __req) {
   };
   
   const MAX_ARCOS = 64;
+  
+  /** Diferencia angular mínima con signo. Local para no cargar el import. */
+  function angleDeltaLocal(a, b) {
+    let d = (b - a) % TAU;
+    if (d > Math.PI) d -= TAU;
+    if (d < -Math.PI) d += TAU;
+    return d;
+  }
   const HITSTOP_MAX = 0.30;              // techo duro de congelacion
   const TICKS_RECARGA_HITSTOP = 5;       // minimo entre micro-parones de impacto
   const MAX_TICKS_CONGELADOS = 14;       // garantia: la simulacion siempre avanza
@@ -9196,6 +10134,7 @@ __def("src/game/world.js", function (exports, __req) {
       this.tmpOpciones = { atraviesaUnaVia: false, ignoraRampas: false };
       this.tmpIds = new Int32Array(this.ent.capacity);
       this.tmpVista = new Float32Array(4);
+      this.tmpDebil = new Float32Array(4);   // x, y, radio, multiplicador
   
       // Arcos eléctricos y rayos, sólo para dibujar.
       this.arcos = {
@@ -9432,21 +10371,41 @@ __def("src/game/world.js", function (exports, __req) {
       j.actualizar(dt, input);
       this.arma.actualizar(dt);
   
+      // Fijado de blanco del módulo Buscador: se elige antes de disparar para
+      // que el proyectil nazca ya con objetivo y no dé el primer bandazo.
+      this._fijarObjetivo(input);
+  
+      // Aviso de que la carga acaba de completarse.
+      if (this.arma.cargaRecienLista) {
+        this.arma.cargaRecienLista = false;
+        this.eventos.emit(EV.CARGA_LISTA, j.x, j.y, 1, 0);
+        this.fx.cargaLista(j.x, j.y);
+      }
+  
       // Disparo.
       if (input.down(BTN.DISPARO) && j.estado !== ESTADO.MUERTO && this.fase === FASE.JUGANDO) {
+        const eraCargado = this.arma.cargado;
         const creados = disparar(this, j, this.arma, input.aim, this.rng);
         if (creados > 0) {
-          this.camara.empujar(input.aim + Math.PI, 3.5 + creados * 0.6);
-          this.camara.sacudir(0.035);
+          this.camara.empujar(input.aim + Math.PI, (eraCargado ? 12 : 3.5) + creados * 0.6);
+          this.camara.sacudir(eraCargado ? 0.18 : 0.035);
+          if (eraCargado) {
+            this.fx.disparoCargado(j.x, j.y, input.aim);
+            this.hitstop(0.035, true);
+          }
         }
       }
       if (input.pressed(BTN.CAMBIO)) {
         this.arma.cicloRapido();
-        this.mostrarCartel(this.arma.etiqueta(), 'CONFIGURACION DE ARMA');
-        this.mensajeT = 1.4;
+        const combo = comboDe(this.arma.mascara);
+        this.mostrarCartel(this.arma.etiqueta(), combo ? combo.efecto : 'CONFIGURACION DE ARMA');
+        this.mensajeT = combo ? 2.4 : 1.4;
       }
   
       this._construirRejilla();
+      // La separación va ANTES de mover: corrige posiciones y deja que cada IA
+      // decida su velocidad partiendo de una formación ya despejada.
+      separarEnemigos(this, dt);
       this._actualizarEntidades(dt);
       this._colisiones(dt);
       this._logicaSala(dt);
@@ -9458,6 +10417,35 @@ __def("src/game/world.js", function (exports, __req) {
         this.eventos.emit(EV.MUERTE_JUGADOR, j.x, j.y, 1, 0);
         this.post.glitch = 1.2;
       }
+    }
+  
+    /**
+     * Elige el enemigo fijado: el más cercano a la línea de puntería dentro de un
+     * cono. Sin esto, los proyectiles buscadores elegían el más cercano a ellos y
+     * se iban a por cualquiera menos a por el que estabas mirando.
+     */
+    _fijarObjetivo(input) {
+      const arma = this.arma;
+      if (!arma.tiene(MOD.BUSCADOR)) { arma.objetivo = -1; return; }
+      const S = this.ent;
+      const j = this.jugador;
+      const cx = Math.cos(input.aim), cy = Math.sin(input.aim);
+      const ALCANCE = 640;
+      const n = this.rejillaEnemigos.consultar(j.x + cx * ALCANCE * 0.5, j.y + cy * ALCANCE * 0.5, ALCANCE * 0.75);
+      let mejor = -1, mejorCoste = Infinity;
+      for (let k = 0; k < n; k++) {
+        const e = this.rejillaEnemigos.resultado[k];
+        if (S.alive[e] !== 1 || S.vida[e] <= 0 || S.tipo[e] === TIPO.TORRETA) continue;
+        const dx = S.x[e] - j.x, dy = S.y[e] - j.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > ALCANCE || dist < 1) continue;
+        const desvio = Math.abs(angleDeltaLocal(input.aim, Math.atan2(dy, dx)));
+        if (desvio > 0.62) continue;
+        // Prioriza lo que está en el eje de puntería, no lo que está cerca.
+        const coste = desvio * 420 + dist * 0.35;
+        if (coste < mejorCoste) { mejorCoste = coste; mejor = e; }
+      }
+      arma.objetivo = mejor >= 0 ? S.handle(mejor) : -1;
     }
   
     _construirRejilla() {
@@ -9535,7 +10523,7 @@ __def("src/game/world.js", function (exports, __req) {
         if (r.chocoY === -1) S.vy[e] = 0;
         if (r.enSuelo && r.cintaVel !== 0) S.x[e] += r.cintaVel * dt;
       }
-      if (r.tileDanino && S.tipo[e] !== TIPO.JEFE) this.danarEnemigo(e, 22, S.x[e], S.y[e], 0.4, 0.9, 1);
+      if (r.tileDanino && S.tipo[e] !== TIPO.JEFE) this.danarEnemigo(e, 22, S.x[e], S.y[e], 0.4, 0.9, 1, false);
   
       const sala = this.sala;
       if (S.y[e] > sala.altoPx + 200) this.matarEnemigo(e, false);
@@ -9643,6 +10631,8 @@ __def("src/game/world.js", function (exports, __req) {
         }
       }
   
+      this._cableTejedores();
+  
       // Rayo del jefe contra el jugador.
       if (this.laser.activo && j.estado !== ESTADO.MUERTO && j.iframes <= 0) {
         const L = this.laser;
@@ -9667,6 +10657,29 @@ __def("src/game/world.js", function (exports, __req) {
         if (Math.abs(S.y[e] - S.y[p]) > S.hh[e] + S.hh[p]) continue;
         if (S.tipo[e] === TIPO.JEFE && S.golpes[e] > 0) continue;   // invulnerable entre fases
   
+        // El espejo devuelve el disparo convertido en bala enemiga. Se puede
+        // volver a devolver con un parry: ese bucle es intencionado.
+        if (reflejaEspejo(S, e, S.x[p], S.y[p])) {
+          const j = this.jugador;
+          const ang = Math.atan2(j.y - S.y[p], j.x - S.x[p]) + this.rng.spread(0.12);
+          const vel = Math.max(300, Math.hypot(S.vx[p], S.vy[p]) * 0.85);
+          S.vx[p] = Math.cos(ang) * vel;
+          S.vy[p] = Math.sin(ang) * vel;
+          S.equipo[p] = 1;
+          S.tipo[p] = TIPO.BALA_ENEMIGA;
+          S.modulos[p] = 0;
+          S.golpes[p] = 1;
+          S.c[p] = 0;
+          S.dmg[p] = Math.max(8, S.dmg[p] * 0.8);
+          S.flags[p] = FLAG.IGNORA_GRAVEDAD | FLAG.DESTRUIBLE;
+          S.sprite[p] = this.R.idx('bala.enemiga');
+          S.luzR[p] = 1; S.luzG[p] = 0.35; S.luzB[p] = 0.45;
+          S.vida[p] = Math.max(S.vida[p], 2.5);
+          this.eventos.emit(EV.REFLEJO, S.x[p], S.y[p], 1, 0);
+          this.fx.impacto(S.x[p], S.y[p], ang, 0.8, 0.9, 1, 0.7);
+          return;
+        }
+  
         if (bloqueaEscudo(S, e, S.x[p], S.y[p])) {
           this.fx.impacto(S.x[p], S.y[p], S.angulo[p], 0.5, 0.85, 1, 0.6);
           this.eventos.emit(EV.IMPACTO, S.x[p], S.y[p], 0.4, 0);
@@ -9684,7 +10697,10 @@ __def("src/game/world.js", function (exports, __req) {
   
         this.danarEnemigo(e, dmg, S.x[p], S.y[p], S.luzR[p], S.luzG[p], S.luzB[p]);
   
-        if (S.modulos[p] & MOD.CADENA) this._cadena(e, S.x[p], S.y[p], dmg * 0.55, 2);
+        if (S.modulos[p] & MOD.CADENA) {
+          const saltos = (S.flags[p] & FLAG.CARGADO) ? 4 : 2;
+          this._cadenaElectrica(e, S.x[p], S.y[p], dmg, saltos);
+        }
   
         S.golpes[p]--;
         if (S.golpes[p] <= 0) {
@@ -9708,7 +10724,58 @@ __def("src/game/world.js", function (exports, __req) {
       this._morirProyectil(p);
     }
   
-    /** Cadena eléctrica: salta a los enemigos cercanos. */
+    /**
+     * Cable de los tejedores: daña al jugador si cruza el segmento que une a la
+     * pareja. Sólo se procesa una vez por pareja (el de handle menor).
+     */
+    _cableTejedores() {
+      const S = this.ent;
+      const j = this.jugador;
+      this.cables = this.cables || { x0: [], y0: [], x1: [], y1: [], n: 0 };
+      this.cables.n = 0;
+      if (!j || j.estado === ESTADO.MUERTO) return;
+      for (let i = 0; i < S.count; i++) {
+        const e = S.dense[i];
+        if (S.alive[e] !== 1 || S.tipo[e] !== TIPO.TEJEDOR) continue;
+        const o = S.resolve(S.enlace[e]);
+        if (o < 0) continue;
+        if (S.handle(e) > S.enlace[e]) continue;   // la pareja ya lo procesó
+        const k = this.cables.n++;
+        this.cables.x0[k] = S.x[e]; this.cables.y0[k] = S.y[e];
+        this.cables.x1[k] = S.x[o]; this.cables.y1[k] = S.y[o];
+        if (S.aturdido[e] > 0 || S.aturdido[o] > 0) continue;
+        // Distancia del jugador al segmento.
+        const ax = S.x[e], ay = S.y[e], bx = S.x[o], by = S.y[o];
+        const dx = bx - ax, dy = by - ay;
+        const len2 = dx * dx + dy * dy;
+        let t = len2 > 0 ? ((j.x - ax) * dx + (j.y - ay) * dy) / len2 : 0;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const px = ax + dx * t - j.x, py = ay + dy * t - j.y;
+        if (px * px + py * py < 22 * 22) this.danarJugador(S.dmg[e], j.x, j.y, ax + dx * t);
+      }
+    }
+  
+    /**
+     * Cadena eléctrica con marcas: el primer impacto deja una marca y el segundo
+     * la detona. Así el módulo también sirve contra un objetivo solo, que era su
+     * punto flojo: antes sin multitud no hacía nada visible.
+     */
+    _cadenaElectrica(objetivo, x, y, dmg, saltos) {
+      const S = this.ent;
+      if (S.marca[objetivo] > 0) {
+        S.marca[objetivo] = 0;
+        this.fx.detonacion(S.x[objetivo], S.y[objetivo]);
+        this.eventos.emit(EV.REBOTE, S.x[objetivo], S.y[objetivo], 1, 0);
+        this.danarEnemigo(objetivo, dmg * 0.85, S.x[objetivo], S.y[objetivo], 0.72, 0.5, 1, false);
+        this._cadena(objetivo, S.x[objetivo], S.y[objetivo], dmg * 0.6, saltos);
+      } else {
+        S.marca[objetivo] = 2.5;
+        this.fx.marca(S.x[objetivo], S.y[objetivo]);
+        this._cadena(objetivo, x, y, dmg * 0.5, Math.max(1, saltos - 1));
+      }
+    }
+  
+    /** Salto del arco a los enemigos cercanos. */
     _cadena(desde, x, y, dmg, saltos) {
       const S = this.ent;
       let origen = desde;
@@ -9716,7 +10783,7 @@ __def("src/game/world.js", function (exports, __req) {
       for (let s = 0; s < saltos; s++) {
         const sig = this.enemigoMasCercano(ox, oy, 230, origen);
         if (sig < 0) break;
-        this.danarEnemigo(sig, dmg, ox, oy, 0.72, 0.5, 1);
+        this.danarEnemigo(sig, dmg, ox, oy, 0.72, 0.5, 1, false);
         this._arco(ox, oy, S.x[sig], S.y[sig]);
         ox = S.x[sig]; oy = S.y[sig];
         origen = sig;
@@ -9733,22 +10800,61 @@ __def("src/game/world.js", function (exports, __req) {
   
     // ----------------------------------------------------------- daño/vida ---
   
-    danarEnemigo(e, cantidad, ix, iy, r, g, b) {
+    /**
+     * Aplica daño a un enemigo. Devuelve el daño real infligido.
+     *
+     * Aquí es donde el combate deja de ser "vaciar una barra": el impacto puede
+     * ser crítico si acierta el punto débil, se reduce si el enemigo es blindado,
+     * se amplifica si está aturdido, y siempre desgasta su aguante.
+     */
+    danarEnemigo(e, cantidad, ix, iy, r, g, b, directo = true) {
       const S = this.ent;
-      if (S.alive[e] !== 1 || S.vida[e] <= 0) return;
-      S.vida[e] -= cantidad;
+      if (S.alive[e] !== 1 || S.vida[e] <= 0) return 0;
+  
+      let dmg = cantidad * factorDanio(S, e);
+      let critico = false;
+      if (directo && puntoDebil(S, e, this.tmpDebil)) {
+        const ddx = ix - this.tmpDebil[0], ddy = iy - this.tmpDebil[1];
+        if (ddx * ddx + ddy * ddy <= this.tmpDebil[2] * this.tmpDebil[2]) {
+          dmg *= this.tmpDebil[3];
+          critico = true;
+        }
+      }
+      if (S.aturdido[e] > 0) dmg *= 1.6;
+  
+      S.vida[e] -= dmg;
       S.flash[e] = 1;
       const ang = Math.atan2(iy - S.y[e], ix - S.x[e]);
-      this.fx.impacto(S.x[e], S.y[e], ang, r, g, b, clamp(cantidad / 22, 0.5, 1.6));
-      this.eventos.emit(EV.IMPACTO, S.x[e], S.y[e], clamp(cantidad / 18, 0.4, 1.5), 0);
-      // Empujón proporcional al daño (los jefes no se mueven).
+  
+      if (critico) {
+        this.fx.critico(ix, iy, ang);
+        this.eventos.emit(EV.CRITICO, ix, iy, 1, 0);
+        this.camara.sacudir(0.14);
+      } else {
+        this.fx.impacto(S.x[e], S.y[e], ang, r, g, b, clamp(dmg / 22, 0.5, 1.6));
+        this.eventos.emit(EV.IMPACTO, S.x[e], S.y[e], clamp(dmg / 18, 0.4, 1.5), 0);
+      }
+  
+      // El aguante se rompe antes con los críticos: apuntar bien acorta el combate.
+      const roto = desgastarAguante(this, e, dmg * (critico ? 1.9 : 1));
+      if (roto) { this.camara.sacudir(0.24); this.hitstop(0.05, true); }
+  
       if (S.tipo[e] !== TIPO.JEFE && S.tipo[e] !== TIPO.TORRETA) {
-        const emp = clamp(cantidad * 3.2, 20, 200);
+        const emp = clamp(dmg * 3.2, 20, 220);
         S.vx[e] -= Math.cos(ang) * emp;
         S.vy[e] -= Math.sin(ang) * emp * 0.6;
       }
       if (S.vida[e] <= 0) this.matarEnemigo(e, S.tipo[e] === TIPO.BOMBARDERO);
-      else this.hitstop(0.018);
+      else if (!roto) this.hitstop(0.018);
+      return dmg;
+    }
+  
+    /** Golpe de área de un enemigo contra el jugador (pisotón del divisor). */
+    golpeArea(x, y, radio, dmg, origen) {
+      const j = this.jugador;
+      if (!j || j.estado === ESTADO.MUERTO) return;
+      const d = Math.hypot(j.x - x, j.y - y);
+      if (d < radio) this.danarJugador(dmg * (1 - d / radio * 0.5), j.x, j.y, x);
     }
   
     matarEnemigo(e, explota) {
@@ -9764,11 +10870,20 @@ __def("src/game/world.js", function (exports, __req) {
       this.camara.sacudir(0.08 * tam);
       this.hitstop(0.03 * tam, tam > 1.2);
   
-      if (explota) {
+      // Un bombardero devuelto con parry ya no es problema tuyo: revienta para
+      // el otro bando.
+      const parado = (S.flags[e] & FLAG.REFLEJADO) !== 0;
+      const volatil = (S.flags[e] & FLAG.ELITE) !== 0 && S.variante[e] === ELITE.VOLATIL;
+      if (explota || volatil) {
+        const radio = volatil && !explota ? 140 : 130;
         this.fx.explosionGrande(x, y, 1.2);
         this.eventos.emit(EV.EXPLOSION, x, y, 1, 0);
         this.camara.sacudir(0.35);
-        this._explosionRadial(x, y, 120, S.dmg[e]);
+        this._explosionRadial(x, y, radio, S.dmg[e], !parado);
+      }
+      if (tipo === TIPO.DIVISOR) {
+        const crias = partirDivisor(this, e);
+        if (crias > 0) this.eventos.emit(EV.DIVISION, x, y, 1, 0);
       }
   
       if (tipo !== TIPO.TORRETA && tipo !== TIPO.JEFE_OJO) {
@@ -9808,7 +10923,7 @@ __def("src/game/world.js", function (exports, __req) {
       S.kill(e);
     }
   
-    _explosionRadial(x, y, radio, dmg) {
+    _explosionRadial(x, y, radio, dmg, dañaJugador = true) {
       const S = this.ent;
       const n = this.rejillaEnemigos.consultar(x, y, radio);
       for (let k = 0; k < n; k++) {
@@ -9816,10 +10931,10 @@ __def("src/game/world.js", function (exports, __req) {
         if (S.alive[e] !== 1) continue;
         const d = Math.hypot(S.x[e] - x, S.y[e] - y);
         if (d > radio) continue;
-        this.danarEnemigo(e, dmg * (1 - d / radio), x, y, 1, 0.6, 0.25);
+        this.danarEnemigo(e, dmg * (1 - d / radio), x, y, 1, 0.6, 0.25, false);
       }
       const j = this.jugador;
-      if (j.estado !== ESTADO.MUERTO) {
+      if (dañaJugador && j.estado !== ESTADO.MUERTO) {
         const d = Math.hypot(j.x - x, j.y - y);
         if (d < radio) this.danarJugador(dmg * (1 - d / radio), j.x, j.y, x);
       }
@@ -9929,7 +11044,9 @@ __def("src/game/world.js", function (exports, __req) {
       this.camara.sacudir(0.3);
       this.hitstop(0.12, true);
       if (info) {
-        this.mostrarCartel(`MODULO: ${info.nombre.toUpperCase()}`, info.descripcion);
+        const combo = comboDe(this.arma.mascara);
+        this.mostrarCartel(`MODULO: ${info.nombre.toUpperCase()}`,
+          combo ? `${combo.nombre} — ${combo.efecto}` : info.descripcion);
         this.mensajeT = 5.2;
         this.avisoModulo = info;
       }
@@ -10132,6 +11249,8 @@ __def("src/game/world.js", function (exports, __req) {
         this._mezclar(S.vida[e]);
         this._mezclar(S.estado[e]);
         this._mezclar(S.t1[e]);
+        this._mezclar(S.aguante[e]);
+        this._mezclar(S.aturdido[e]);
       }
       const j = this.jugador;
       this._mezclar(j.x); this._mezclar(j.y);
@@ -10177,13 +11296,23 @@ __def("src/game/draw.js", function (exports, __req) {
   // emisiva (proyectiles, arcos, rayos, partículas), que se suma por encima de la
   // luz para que lo que brilla brille de verdad.
   
-  const { MASK, TIPO, FLAG } = __req("src/game/components.js");
+  const { MASK, TIPO, FLAG, ELITE } = __req("src/game/components.js");
+  const { STATS, puntoDebil } = __req("src/game/enemies.js");
   const { TAM, T } = __req("src/game/tiles.js");
   const { ESTADO, P } = __req("src/game/player.js");
   const { TIPO_SALA } = __req("src/game/level.js");
   const { PALETAS_BIOMA } = __req("src/render/spriteart.js");
+  const { ZONA } = __req("src/game/fx.js");
   const { clamp, lerp, TAU } = __req("src/core/math.js");
   const { cosmeticRng: CR } = __req("src/core/rng.js");
+  
+  /** Color de cada modificador de élite, para que se distingan de un vistazo. */
+  const TINTE_ELITE = [
+    [0.65, 0.88, 1.25],   // blindado
+    [1.35, 1.15, 0.45],   // veloz
+    [1.35, 0.7, 0.3],     // volatil
+    [0.5, 1.3, 0.7],      // regenerador
+  ];
   
   class Dibujante {
     constructor(mundo) {
@@ -10355,24 +11484,85 @@ __def("src/game/draw.js", function (exports, __req) {
         const t = this.R.atlas.tam2d;
         const w = t[idx * 2] * S.escala[e];
         const h = t[idx * 2 + 1] * S.escala[e];
-        const espejo = S.facing[e] < 0 ? -1 : 1;
         const flash = S.flash[e];
         const elite = (S.flags[e] & FLAG.ELITE) !== 0;
+        // El espejo se orienta hacia el jugador en vez de voltearse: su placa
+        // tiene que apuntar exactamente adonde va a rebotar el disparo.
+        const rotado = S.tipo[e] === TIPO.ESPEJO;
+        const espejo = rotado ? 1 : (S.facing[e] < 0 ? -1 : 1);
+        const rot = rotado ? S.angulo[e] : 0;
   
-        lote.push(idx, x, y, w * espejo, h, 0,
-          elite ? 1.25 : 1, elite ? 0.85 : 1, elite ? 0.85 : 1, 1,
-          elite ? 0.25 : 0.05, flash);
+        let tr = 1, tg = 1, tb = 1;
+        if (elite) {
+          const tinte = TINTE_ELITE[S.variante[e]] || TINTE_ELITE[0];
+          tr = tinte[0]; tg = tinte[1]; tb = tinte[2];
+        }
+        // Aturdido: se lava a blanco para que la ventana de castigo se vea sola.
+        const aturdido = S.aturdido[e] > 0;
+        const brillo = aturdido ? 0.55 : elite ? 0.25 : 0.05;
+  
+        lote.push(idx, x, y, w * espejo, h, rot, tr, tg, tb, 1, brillo, flash);
+  
+        if (elite) this._marcaElite(lote, x, y, h, S.variante[e]);
+        if (aturdido) this._marcaAturdido(lote, x, y, h, S.aturdido[e]);
+        this._marcaPuntoDebil(lote, S, e, x, y);
   
         // Cañón de la torreta, orientado al jugador.
         if (S.tipo[e] === TIPO.TORRETA) {
           lote.push(this.tiles.canon, x + Math.cos(S.angulo[e]) * 8, y - 14 + Math.sin(S.angulo[e]) * 8,
             40, 18, S.angulo[e], 1, 1, 1, 1, 0.12, flash);
         }
-        // Barra de vida de los grandes.
+        // Barra de vida de los grandes, con el aguante justo debajo.
         if ((m & MASK.VIDA) && S.vidaMax[e] > 90 && S.tipo[e] !== TIPO.JEFE && S.vida[e] < S.vidaMax[e]) {
-          this._barraVida(lote, x, y - h * 0.5 - 12, 44, S.vida[e] / S.vidaMax[e]);
+          const by = y - h * 0.5 - 12;
+          this._barraVida(lote, x, by, 44, S.vida[e] / S.vidaMax[e]);
+          if (S.aguanteMax[e] > 0 && S.aguante[e] < S.aguanteMax[e] * 0.995) {
+            const f = clamp(S.aguante[e] / S.aguanteMax[e], 0, 1);
+            lote.push(this.tiles.blanco, x - 44 * 0.5 * (1 - f), by + 6, 44 * f, 2.5, 0,
+              1, 0.85, 0.35, 0.9, 0.5, 0);
+          }
         }
       }
+    }
+  
+    /** Distintivo de élite: un anillo con el color del modificador. */
+    _marcaElite(lote, x, y, h, variante) {
+      const t = this.tiempoAmbiente * 2.2 + variante;
+      const c = TINTE_ELITE[variante] || TINTE_ELITE[0];
+      const r = h * 0.62 + Math.sin(t) * 2;
+      lote.push(this.R.idx('fx.telegrafia.0'), x, y, r * 2, r * 2, t * 0.5,
+        c[0], c[1], c[2], 0.5, 0.6, 0);
+    }
+  
+    /** Aturdido: anillo blanco girando encima. */
+    _marcaAturdido(lote, x, y, h, t) {
+      const a = clamp(t / 0.95, 0, 1);
+      const giro = this.tiempoAmbiente * 7;
+      for (let k = 0; k < 3; k++) {
+        const ang = giro + (k / 3) * TAU;
+        lote.push(this.tiles.blanco,
+          x + Math.cos(ang) * 18, y - h * 0.55 + Math.sin(ang) * 7,
+          5, 5, ang, 1, 0.92, 0.5, a, 1, 0);
+      }
+    }
+  
+    /**
+     * Pista del punto débil: sólo se enseña cuando el jugador está cerca, y muy
+     * tenue. Es para que se aprenda dónde apuntar, no para señalarlo siempre.
+     */
+    _marcaPuntoDebil(lote, S, e, x, y) {
+      const j = this.mundo.jugador;
+      if (!j || j.id < 0) return;
+      const dx = j.x - S.x[e], dy = j.y - S.y[e];
+      const d2 = dx * dx + dy * dy;
+      if (d2 > 420 * 420) return;
+      if (!puntoDebil(S, e, this._debil || (this._debil = new Float32Array(4)))) return;
+      const P4 = this._debil;
+      const cerca = 1 - Math.min(1, Math.sqrt(d2) / 420);
+      const pulso = 0.35 + 0.3 * Math.sin(this.tiempoAmbiente * 5 + e);
+      const ox = P4[0] - S.x[e], oy = P4[1] - S.y[e];
+      lote.push(this.R.idx('fx.suave'), x + ox, y + oy, P4[2] * 2.4, P4[2] * 2.4, 0,
+        1, 0.88, 0.4, cerca * pulso * 0.5, 1, 0);
     }
   
     _barraVida(lote, x, y, ancho, frac) {
@@ -10444,6 +11634,40 @@ __def("src/game/draw.js", function (exports, __req) {
         lote.push(Tl.ancla, j.ganchoX, j.ganchoY, 26, 26, M.tiempo * 3, 0.6, 0.95, 1, 1, 1, 0);
       }
   
+      // Retícula del objetivo fijado por el módulo Buscador.
+      const fijado = S.resolve(M.arma.objetivo);
+      if (fijado >= 0) {
+        const t = M.tiempo * 2.4;
+        const rad = Math.max(S.hw[fijado], S.hh[fijado]) * 1.9 + 8;
+        for (let k = 0; k < 4; k++) {
+          const a = t + (k / 4) * TAU;
+          lote.push(this.tiles.blanco,
+            S.x[fijado] + Math.cos(a) * rad, S.y[fijado] + Math.sin(a) * rad,
+            10, 3, a, 1, 0.55, 0.9, 0.85, 1, 0);
+        }
+      }
+  
+      // Enemigos marcados por la cadena: el siguiente impacto detona.
+      for (let i = 0; i < S.count; i++) {
+        const e = S.dense[i];
+        if (S.alive[e] !== 1 || S.marca[e] <= 0) continue;
+        const a = clamp(S.marca[e] / 2.5, 0, 1);
+        const r = Math.max(S.hw[e], S.hh[e]) * 1.5;
+        lote.push(this.R.idx('fx.telegrafia.0'), S.x[e], S.y[e], r * 2, r * 2,
+          M.tiempo * 3, 0.72, 0.5, 1, 0.35 + a * 0.4, 1, 0);
+      }
+  
+      // Cables entre tejedores: la amenaza es el segmento, no los nodos.
+      const cables = M.cables;
+      if (cables && cables.n > 0) {
+        for (let i = 0; i < cables.n; i++) {
+          this._rayo(lote, cables.x0[i], cables.y0[i], cables.x1[i], cables.y1[i],
+            1, 0.35, 1, 0.8, 16);
+          this._rayo(lote, cables.x0[i], cables.y0[i], cables.x1[i], cables.y1[i],
+            1, 0.9, 1, 0.95, 5);
+        }
+      }
+  
       // Arcos de la cadena eléctrica.
       for (let i = 0; i < M.arcos.n; i++) {
         this._rayo(lote, M.arcos.x0[i], M.arcos.y0[i], M.arcos.x1[i], M.arcos.y1[i],
@@ -10487,6 +11711,8 @@ __def("src/game/draw.js", function (exports, __req) {
         }
       }
   
+      this._zonas(lote);
+  
       // Pool de efectos animados.
       const pool = M.fx.pool;
       const tam = this.R.atlas.tam2d;
@@ -10500,6 +11726,92 @@ __def("src/game/draw.js", function (exports, __req) {
         const a = pool.a[i] * (1 - t * t);
         lote.push(idx, pool.x[i], pool.y[i], tam[idx * 2] * esc, tam[idx * 2 + 1] * esc,
           pool.rot[i], pool.r[i], pool.g[i], pool.b[i], a, 1, 0);
+      }
+    }
+  
+    /**
+     * Zonas de peligro. El contorno dice dónde y el relleno dice cuándo: la barra
+     * avanza con el temporizador real del ataque, así que si llega al final es
+     * porque el golpe sale ya.
+     */
+    _zonas(lote) {
+      const Z = this.mundo.fx.zonas;
+      if (Z.n === 0) return;
+      const Tl = this.tiles;
+      const haz = Tl.haz, suave = Tl.suave, anillo = this.R.idx('fx.anillo.0');
+  
+      for (let i = 0; i < Z.vivo.length; i++) {
+        if (!Z.vivo[i]) continue;
+        const p = clamp(Z.t[i] / Z.dur[i], 0, 1);
+        const r = Z.r[i], g = Z.g[i], b = Z.b[i];
+        // Late más rápido según se acerca el impacto, y da un fogonazo al final.
+        const latido = 0.35 + 0.35 * Math.sin(Z.t[i] * (9 + p * 26));
+        const inminente = p > 0.86 ? (p - 0.86) / 0.14 : 0;
+        const aContorno = (0.45 + latido * 0.55) * (1 - inminente * 0.25) + inminente * 0.8;
+        // La capa emisiva suma: con alfas bajos el relleno no llegaba a verse.
+        const aRelleno = 0.16 + inminente * 0.5;
+  
+        if (Z.tipo[i] === ZONA.LINEA) {
+          const dx = Z.x2[i] - Z.x[i], dy = Z.y2[i] - Z.y[i];
+          const largo = Math.hypot(dx, dy);
+          if (largo < 1) continue;
+          const ang = Math.atan2(dy, dx);
+          const nx = -Math.sin(ang), ny = Math.cos(ang);
+          const mitad = Z.grosor[i] * 0.5;
+          const cx = Z.x[i] + dx * 0.5, cy = Z.y[i] + dy * 0.5;
+          const ux = Math.cos(ang), uy = Math.sin(ang);
+          // Banda tenue de fondo: dice DÓNDE.
+          lote.push(Tl.blanco, cx, cy, largo, Z.grosor[i], ang, r, g, b, 0.10 + inminente * 0.2, 1, 0);
+          // Relleno que avanza: dice CUÁNDO.
+          const lleno = largo * p;
+          lote.push(Tl.blanco, Z.x[i] + ux * lleno * 0.5, Z.y[i] + uy * lleno * 0.5,
+            lleno, Z.grosor[i], ang, r, g, b, aRelleno, 1, 0);
+          // Bordes.
+          for (const s2 of [-1, 1]) {
+            lote.push(haz, cx + nx * mitad * s2, cy + ny * mitad * s2, largo, 6, ang, r, g, b, aContorno, 1, 0);
+          }
+          // Frente del relleno.
+          lote.push(haz, Z.x[i] + ux * lleno, Z.y[i] + uy * lleno,
+            Z.grosor[i] + 6, 8, ang + Math.PI * 0.5, 1, 0.9, 0.85, aContorno, 1, 0);
+  
+        } else if (Z.tipo[i] === ZONA.CONO) {
+          const n = 13;
+          const radio = Z.radio[i];
+          const lleno = radio * p;
+          // Relleno en abanico: bandas anchas para que se lea como un área.
+          const grosorBanda = (Z.apertura[i] * 2 * radio) / (n - 1) + 8;
+          for (let k = 0; k < n; k++) {
+            const a = Z.ang[i] + (k / (n - 1) - 0.5) * Z.apertura[i] * 2;
+            lote.push(haz, Z.x[i] + Math.cos(a) * radio * 0.5, Z.y[i] + Math.sin(a) * radio * 0.5,
+              radio, grosorBanda, a, r, g, b, 0.07 + inminente * 0.12, 1, 0);
+            lote.push(haz, Z.x[i] + Math.cos(a) * lleno * 0.5, Z.y[i] + Math.sin(a) * lleno * 0.5,
+              lleno, grosorBanda, a, r, g, b, aRelleno * 0.55, 1, 0);
+          }
+          // Aristas y arco del frente.
+          for (const s2 of [-1, 1]) {
+            const a = Z.ang[i] + s2 * Z.apertura[i];
+            lote.push(haz, Z.x[i] + Math.cos(a) * radio * 0.5, Z.y[i] + Math.sin(a) * radio * 0.5,
+              radio, 6, a, r, g, b, aContorno, 1, 0);
+          }
+          const pasos = 10;
+          for (let k = 0; k < pasos; k++) {
+            const a = Z.ang[i] + ((k / (pasos - 1)) - 0.5) * Z.apertura[i] * 2;
+            const a2 = Z.ang[i] + (((k + 1) / (pasos - 1)) - 0.5) * Z.apertura[i] * 2;
+            const x1 = Z.x[i] + Math.cos(a) * lleno, y1 = Z.y[i] + Math.sin(a) * lleno;
+            const x2 = Z.x[i] + Math.cos(a2) * lleno, y2 = Z.y[i] + Math.sin(a2) * lleno;
+            if (k === pasos - 1) break;
+            lote.push(haz, (x1 + x2) * 0.5, (y1 + y2) * 0.5, Math.hypot(x2 - x1, y2 - y1) + 4, 7,
+              Math.atan2(y2 - y1, x2 - x1), 1, 0.9, 0.85, aContorno * 0.9, 1, 0);
+          }
+  
+        } else {
+          const radio = Z.radio[i];
+          lote.push(suave, Z.x[i], Z.y[i], radio * 2, radio * 2, 0, r, g, b, 0.10 + inminente * 0.22, 1, 0);
+          lote.push(suave, Z.x[i], Z.y[i], radio * 2 * p, radio * 2 * p, 0, r, g, b, aRelleno, 1, 0);
+          lote.push(anillo + 4, Z.x[i], Z.y[i], radio * 2.3, radio * 2.3, 0, r, g, b, aContorno, 1, 0);
+          lote.push(anillo + 4, Z.x[i], Z.y[i], radio * 2.3 * p, radio * 2.3 * p, 0,
+            1, 0.9, 0.85, aContorno * 0.8, 1, 0);
+        }
       }
     }
   
@@ -10743,6 +12055,28 @@ __def("src/ui/hud.js", function (exports, __req) {
         const a = clamp(j.comboT / 3.2, 0, 1);
         R.texto(this.txtCombo.get(j.combo), R.ancho - 60 * s, 150 * s, 0.9 * s, 1, 0.8, 0.35, a, 1, 0.6);
         R.texto('CADENA', R.ancho - 60 * s, 200 * s, 0.3 * s, 1, 0.75, 0.4, a * 0.8, 1);
+      }
+  
+      // ---- Carga del arma ----
+      // Se dibuja pegada al bloque de módulos: es una propiedad del arma, no del
+      // personaje, y conviene que se lea junto a lo que la modifica.
+      {
+        const cx = 58 * s + 68 * s;
+        const cy = R.alto - 92 * s - 52 * s;
+        const w = 190 * s;
+        const c = clamp(M.arma.carga, 0, 1);
+        const listo = c >= 1;
+        const pul = listo ? 0.75 + 0.25 * Math.sin(this.pulso * 10) : 1;
+        // Carril visible aunque esté vacío: si no, con la carga a cero el
+        // indicador desaparecía del todo y no se aprendía que existe.
+        lote.push(blanco, cx, cy, w + 2 * s, 8 * s, 0, 0.35, 0.55, 0.7, 0.35, 0.1, 0);
+        lote.push(blanco, cx, cy, w, 6 * s, 0, 0.04, 0.07, 0.11, 1, 0, 0);
+        if (c > 0.001) {
+          lote.push(blanco, cx - w * 0.5 + w * c * 0.5, cy, w * c, 6 * s, 0,
+            listo ? 1 : 0.45, listo ? 0.95 : 0.8, listo ? 0.7 : 1, pul, listo ? 0.8 : 0.3, 0);
+        }
+        R.texto(listo ? 'DISPARO CARGADO' : 'CARGA', cx, cy - 20 * s, 0.24 * s,
+          listo ? 1 : 0.5, listo ? 0.95 : 0.7, listo ? 0.7 : 0.85, listo ? pul : 0.6, 0.5);
       }
   
       // ---- Sobrecalentamiento ----

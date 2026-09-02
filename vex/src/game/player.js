@@ -463,17 +463,27 @@ export class Jugador {
 
   // ------------------------------------------------------------- parry -----
 
+  /**
+   * Ventana de parry. Hace dos cosas a la vez:
+   *  · devuelve los proyectiles enemigos cercanos, con más daño y hacia donde
+   *    estés apuntando;
+   *  · corta en seco cualquier ataque comprometido (embestidas, pisotones, la
+   *    mecha del bombardero) y deja al enemigo aturdido.
+   * Lo segundo es lo que convierte el parry en una herramienta ofensiva y no
+   * en un botón de emergencia.
+   */
   _resolverParry() {
     const M = this.mundo;
     const S = M.ent;
     let reflejados = 0;
+    let parados = 0;
+
     for (let i = 0; i < S.count; i++) {
       const e = S.dense[i];
       if (S.alive[e] !== 1) continue;
       if (S.tipo[e] !== TIPO.BALA_ENEMIGA) continue;
       const dx = S.x[e] - this.x, dy = S.y[e] - this.y;
       if (dx * dx + dy * dy > P.PARRY_RADIO * P.PARRY_RADIO) continue;
-      // Reflejar: cambia de equipo, dobla daño y sale hacia donde apuntas.
       const vel = Math.hypot(S.vx[e], S.vy[e]) * 1.55 + 220;
       const ang = this.aim;
       S.vx[e] = Math.cos(ang) * vel;
@@ -487,15 +497,52 @@ export class Jugador {
       S.luzR[e] = 1; S.luzG[e] = 0.5; S.luzB[e] = 0.95;
       reflejados++;
     }
-    if (reflejados > 0) {
+
+    // Ataques comprometidos al alcance.
+    const radio = P.PARRY_RADIO * 1.55;
+    const n = M.rejillaEnemigos.consultar(this.x, this.y, radio + 40);
+    for (let k = 0; k < n; k++) {
+      const e = M.rejillaEnemigos.resultado[k];
+      if (S.alive[e] !== 1 || (S.flags[e] & FLAG.PARRYABLE) === 0) continue;
+      const dx = S.x[e] - this.x, dy = S.y[e] - this.y;
+      const alcance = radio + S.hw[e];
+      if (dx * dx + dy * dy > alcance * alcance) continue;
+
+      S.flags[e] &= ~FLAG.PARRYABLE;
+      S.estado[e] = 0;
+      S.t2[e] = 0;
+      S.aturdido[e] = 1.35;
+      S.aguante[e] = S.aguanteMax[e];
+      const dir = Math.atan2(dy, dx);
+      S.vx[e] = Math.cos(dir) * 420;
+      S.vy[e] = Math.sin(dir) * 420 - 120;
+      S.flash[e] = 1;
+
+      // Un bombardero devuelto sale disparado hacia donde apuntas y ya no te
+      // hace daño a ti: pasa a ser munición.
+      if (S.tipo[e] === TIPO.BOMBARDERO) {
+        S.flags[e] |= FLAG.REFLEJADO;
+        S.aturdido[e] = 0;
+        S.estado[e] = 1;
+        S.t2[e] = 0.85;
+        S.vx[e] = Math.cos(this.aim) * 900;
+        S.vy[e] = Math.sin(this.aim) * 900;
+      }
+      parados++;
+    }
+
+    if (reflejados > 0 || parados > 0) {
       this.parryT = 0;
       this.parryExito = 0.35;
-      this.iframes = Math.max(this.iframes, 0.28);
-      M.eventos.emit(EV.PARRY, this.x, this.y, 1, reflejados);
-      M.fx.parry(this.x, this.y, reflejados);
-      M.hitstop(0.085, true);
-      M.camara.sacudir(0.28);
-      M.energiaParry(reflejados);
+      this.iframes = Math.max(this.iframes, 0.3);
+      this.dashDisponible = true;
+      this.dashCd = 0;
+      M.eventos.emit(EV.PARRY, this.x, this.y, 1, reflejados + parados);
+      if (parados > 0) M.fx.parryMelee(this.x, this.y);
+      else M.fx.parry(this.x, this.y, reflejados);
+      M.hitstop(parados > 0 ? 0.13 : 0.085, true);
+      M.camara.sacudir(parados > 0 ? 0.45 : 0.28);
+      M.energiaParry(reflejados + parados * 2);
     }
   }
 
